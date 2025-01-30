@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "13000:13000"
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=host.docker.internal
+      - DB_USER=root
+      - DB_PASSWORD=Yaosong1216!
+      - DB_NAME=clockingapp
+      - DB_PORT=3306
+      - JWT_SECRET=your_jwt_secret
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+    command: npm run dev
