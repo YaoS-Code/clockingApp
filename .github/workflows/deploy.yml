@@ -25,34 +25,31 @@ jobs:
             # Navigate to project
             cd ~/clockingApp
             
-            # Update git remote URL to include token
-            git remote set-url origin https://${{ secrets.GH_TOKEN }}@github.com/YaoS-Code/clockingApp.git
+            # Ensure correct permissions
+            chmod 700 ~/.ssh
+            chmod 600 ~/.ssh/id_ed25519
+            chmod 644 ~/.ssh/id_ed25519.pub
             
-            # Update from git
-            git fetch origin
-            git reset --hard origin/main
+            # Pull latest changes
+            git pull origin main
             
-            # Use specific Node version
+            # Load NVM
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            nvm use 18
+            
+            # Use Node
+            nvm install 16
+            nvm use 16
             
             # Client build
-            echo "Building client..."
             cd client 
-            rm -rf node_modules package-lock.json
             npm install
             npm run build
             
             # Server setup
-            echo "Setting up server..."
             cd ../server 
-            rm -rf node_modules package-lock.json
             npm install
             
-            # Return to project root
+            # Return to root and restart
             cd ..
-            
-            # Restart PM2
-            export PATH="$PATH:$HOME/.npm-global/bin:/usr/local/bin"
             pm2 restart ecosystem.config.js
