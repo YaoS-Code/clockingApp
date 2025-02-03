@@ -11,7 +11,10 @@ const app = express();
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: ['http://216.232.48.211:3001', 'http://localhost:3001', 'https://clock.mmcwellness.ca'],
+  credentials: true
+}));
 app.use(express.json()); // Make sure this is here
 app.use(express.urlencoded({ extended: true }));
 
@@ -38,6 +41,6 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 13000;
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`ClockingApp server is running on port ${PORT}`);
 });

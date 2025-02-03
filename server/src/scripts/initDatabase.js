@@ -7,21 +7,21 @@ const initDatabase = async () => {
     try {
         // Create connection
         connection = await mysql.createConnection({
-            host: process.env.DB_HOST,
-            user: process.env.DB_USER,
-            password: process.env.DB_PASSWORD,
+            host: "localhost",
+            user: "root",
+            password: "Z2Rh6VGr7DE=",
         });
 
         console.log('Connected to MySQL server');
 
         // Drop database if not exists
-        await connection.query(`Drop DATABASE  ${process.env.DB_NAME}`);
+       //  await connection.query(`Drop DATABASE  ${process.env.DB_NAME}`);
         // Create database if not exists
-        await connection.query(`CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME}`);
-        console.log(`Database ${process.env.DB_NAME} ensured`);
+        await connection.query(`CREATE DATABASE IF NOT EXISTS clockingapp`);
+        console.log(`Database clockingapp ensured`);
 
         // Use the database
-        await connection.query(`USE ${process.env.DB_NAME}`);
+        await connection.query(`USE clockingapp`);
 
         // Create users table
         await connection.query(`
