@@ -36,7 +36,7 @@ function Login() {
     <Container maxWidth="sm">
       <Paper elevation={3} sx={{ p: 4, mt: 8 }}>
         <Typography variant="h4" align="center" gutterBottom>
-          Login
+          Employee Login
         </Typography>
         {error && (
           <Typography color="error" align="center" gutterBottom>
