@@ -18,15 +18,15 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            # Export NVM directory
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            
-            # Navigate to project directory
             cd ~/clockingApp
             
-            # Pull latest changes
-            git pull origin main
+            # Configure git to use token
+            git config --global credential.helper store
+            echo "https://${{ secrets.GH_TOKEN }}@github.com" > ~/.git-credentials
+            
+            # Update repository
+            git fetch --all
+            git reset --hard origin/main
             
             # Client build
             echo "Building client..."
@@ -42,11 +42,5 @@ jobs:
             # Return to project root
             cd ..
             
-            # Stop current PM2 processes
-            pm2 stop ecosystem.config.js || true
-            
-            # Start/Reload with ecosystem file
-            pm2 start ecosystem.config.js
-
-            # Save PM2 configuration
-            pm2 save
+            # Restart PM2
+            pm2 restart ecosystem.config.js
