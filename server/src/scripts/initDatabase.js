@@ -14,6 +14,8 @@ const initDatabase = async () => {
 
         console.log('Connected to MySQL server');
 
+        // Drop database if not exists
+        await connection.query(`Drop DATABASE  ${process.env.DB_NAME}`);
         // Create database if not exists
         await connection.query(`CREATE DATABASE IF NOT EXISTS ${process.env.DB_NAME}`);
         console.log(`Database ${process.env.DB_NAME} ensured`);
