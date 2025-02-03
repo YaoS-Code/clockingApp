@@ -1,0 +1,42 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '20'
+
+      # Build client
+      - name: Install and build client
+        working-directory: ./client
+        run: |
+          npm install
+
+      # Install server dependencies
+      - name: Install server dependencies
+        working-directory: ./server
+        run: npm install
+
+      # Deploy to production server
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd ~/clockingApp
+            git pull origin main
+            cd client && npm install && npm run build
+            cd ../server && npm install
+            pm2 reload all
