@@ -1,5 +1,6 @@
 // src/components/admin/RecordsSummary.jsx
 import React, { useState, useEffect, useCallback } from 'react';
+import moment from 'moment';
 import {
   Container,
   Paper,
@@ -23,8 +24,19 @@ import {
   TableHead,
   TableRow,
   Divider,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import EditIcon from '@mui/icons-material/Edit';
+import SaveIcon from '@mui/icons-material/Save';
+import CancelIcon from '@mui/icons-material/Cancel';
 import { format } from 'date-fns';
 import api from '../../services/api';
 
@@ -32,6 +44,13 @@ function RecordsSummary() {
   const [summaryData, setSummaryData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [editingRecord, setEditingRecord] = useState(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
   const [filters, setFilters] = useState({
     location: 'all',
     start_date: '2024-01-01',
@@ -43,6 +62,8 @@ function RecordsSummary() {
     { value: 'MMC', label: 'MMC' },
     { value: 'Skinart', label: 'Skinart' },
     { value: 'RAAC', label: 'RAAC' },
+    { value: 'Remote', label: 'Remote' },
+    { value: 'Unspecified', label: 'Unspecified' }
   ];
 
   const fetchSummary = useCallback(async () => {
@@ -58,7 +79,6 @@ function RecordsSummary() {
 
       const response = await api.get('/admin/records/summary', { params });
       
-      // Group by user and then by location
       const groupedData = response.data.reduce((users, record) => {
         if (!users[record.user_id]) {
           users[record.user_id] = {
@@ -82,16 +102,16 @@ function RecordsSummary() {
         }
 
         users[record.user_id].locations[location].records.push({
+          id: record.record_id,
           clock_in: record.clock_in,
           clock_out: record.clock_out,
           individual_hours: parseFloat(record.individual_hours || 0),
+          location: location
         });
 
-        // Update location totals
         users[record.user_id].locations[location].total_hours += 
           parseFloat(record.individual_hours || 0);
 
-        // Update user totals
         users[record.user_id].total_hours += parseFloat(record.individual_hours || 0);
         users[record.user_id].total_records += 1;
 
@@ -111,7 +131,124 @@ function RecordsSummary() {
     fetchSummary();
   }, [fetchSummary]);
 
-  // Calculate grand total
+  const handleEditClick = (clockRecord, userId, location) => {
+    console.log('Editing record:', { clockRecord, userId, location });
+    
+    if (!clockRecord.id) {
+      setSnackbar({
+        open: true,
+        message: 'Record ID not found',
+        severity: 'error'
+      });
+      return;
+    }
+
+    const formattedClockIn = clockRecord.clock_in ? 
+      moment(clockRecord.clock_in).format('YYYY-MM-DDTHH:mm') : '';
+    const formattedClockOut = clockRecord.clock_out ? 
+      moment(clockRecord.clock_out).format('YYYY-MM-DDTHH:mm') : '';
+
+    setEditingRecord({
+      ...clockRecord,
+      clock_in: formattedClockIn,
+      clock_out: formattedClockOut,
+      user_id: userId,
+      location: location
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    try {
+      await api.put(`/admin/records/${editingRecord.id}`, {
+        clock_in: editingRecord.clock_in,
+        clock_out: editingRecord.clock_out,
+        location: editingRecord.location,
+        notes: 'Modified by admin'
+      });
+
+      setSnackbar({
+        open: true,
+        message: 'Record updated successfully',
+        severity: 'success'
+      });
+      
+      setEditDialogOpen(false);
+      fetchSummary();
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error.response?.data?.error || 'Failed to update record',
+        severity: 'error'
+      });
+    }
+  };
+  const EditRecordDialog = () => (
+    <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)}>
+      <DialogTitle>Edit Clock Record</DialogTitle>
+      <DialogContent>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12}>
+            <TextField
+              label="Clock In"
+              type="datetime-local"
+              value={editingRecord?.clock_in?.slice(0, 16) || ''}
+              onChange={(e) => setEditingRecord({
+                ...editingRecord,
+                clock_in: e.target.value
+              })}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              label="Clock Out"
+              type="datetime-local"
+              value={editingRecord?.clock_out?.slice(0, 16) || ''}
+              onChange={(e) => setEditingRecord({
+                ...editingRecord,
+                clock_out: e.target.value
+              })}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <FormControl fullWidth>
+              <InputLabel>Location</InputLabel>
+              <Select
+                value={editingRecord?.location || ''}
+                onChange={(e) => setEditingRecord({
+                  ...editingRecord,
+                  location: e.target.value
+                })}
+                label="Location"
+              >
+                {locations
+                  .filter(loc => loc.value !== 'all')
+                  .map((loc) => (
+                    <MenuItem key={loc.value} value={loc.value}>
+                      {loc.label}
+                    </MenuItem>
+                  ))
+                }
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setEditDialogOpen(false)} startIcon={<CancelIcon />}>
+          Cancel
+        </Button>
+        <Button onClick={handleSaveEdit} color="primary" startIcon={<SaveIcon />}>
+          Save
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+
   const grandTotal = summaryData.reduce((total, user) => {
     return total + user.total_hours;
   }, 0);
@@ -185,9 +322,8 @@ function RecordsSummary() {
             sx={{ fontSize: '1.1rem', padding: '20px' }}
           />
         </Box>
-
-        {/* User Summaries */}
-        {summaryData.map((user) => (
+                {/* User Summaries */}
+                {summaryData.map((user) => (
           <Accordion key={user.user_id} sx={{ mb: 2 }}>
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Grid container spacing={2} alignItems="center">
@@ -250,15 +386,24 @@ function RecordsSummary() {
                           <TableCell>Clock In</TableCell>
                           <TableCell>Clock Out</TableCell>
                           <TableCell align="right">Hours</TableCell>
+                          <TableCell align="right">Actions</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {locationData.records.map((record, index) => (
-                          <TableRow key={index}>
-                            <TableCell>{formatDateTime(record.clock_in)}</TableCell>
-                            <TableCell>{formatDateTime(record.clock_out)}</TableCell>
+                        {locationData.records.map((clockRecord, recordIndex) => (
+                          <TableRow key={`${location}-${recordIndex}`}>
+                            <TableCell>{formatDateTime(clockRecord.clock_in)}</TableCell>
+                            <TableCell>{formatDateTime(clockRecord.clock_out)}</TableCell>
                             <TableCell align="right">
-                              {formatDuration(record.individual_hours)}
+                              {formatDuration(clockRecord.individual_hours)}
+                            </TableCell>
+                            <TableCell align="right">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleEditClick(clockRecord, user.user_id, location)}
+                              >
+                                <EditIcon fontSize="small" />
+                              </IconButton>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -270,6 +415,7 @@ function RecordsSummary() {
                           <TableCell align="right" sx={{ fontWeight: 'bold' }}>
                             {formatDuration(locationData.total_hours)}
                           </TableCell>
+                          <TableCell />
                         </TableRow>
                       </TableBody>
                     </Table>
@@ -336,6 +482,23 @@ function RecordsSummary() {
           </Typography>
         )}
       </Paper>
+
+      {/* Edit Dialog */}
+      {editingRecord && <EditRecordDialog />}
+
+      {/* Snackbar for notifications */}
+      <Snackbar 
+        open={snackbar.open} 
+        autoHideDuration={6000} 
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+      >
+        <Alert 
+          onClose={() => setSnackbar({ ...snackbar, open: false })} 
+          severity={snackbar.severity}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 }

@@ -13,68 +13,47 @@ exports.getRecordsSummaryByPeriod = async (req, res) => {
         }
 
         const query = `
-            WITH user_location_summary AS (
-                SELECT 
-                    u.id as user_id,
-                    u.username,
-                    u.full_name,
-                    cr.location,
-                    COUNT(cr.id) OVER (PARTITION BY u.id) as total_records,
-                    COUNT(cr.id) OVER (PARTITION BY u.id, cr.location) as location_records,
-                    -- Total hours for all locations
-                    SUM(
-                        CASE 
-                            WHEN cr.clock_out IS NOT NULL 
-                            THEN TIMESTAMPDIFF(SECOND, cr.clock_in, cr.clock_out)
-                            ELSE TIMESTAMPDIFF(SECOND, cr.clock_in, NOW())
-                        END
-                    ) OVER (PARTITION BY u.id) / 3600 as total_hours,
-                    -- Hours per location
-                    SUM(
-                        CASE 
-                            WHEN cr.clock_out IS NOT NULL 
-                            THEN TIMESTAMPDIFF(SECOND, cr.clock_in, cr.clock_out)
-                            ELSE TIMESTAMPDIFF(SECOND, cr.clock_in, NOW())
-                        END
-                    ) OVER (PARTITION BY u.id, cr.location) / 3600 as location_hours,
-                    MIN(cr.clock_in) OVER (PARTITION BY u.id) as first_clock_in,
-                    MAX(cr.clock_out) OVER (PARTITION BY u.id) as last_clock_out,
-                    -- Location specific first and last
-                    MIN(cr.clock_in) OVER (PARTITION BY u.id, cr.location) as location_first_clock_in,
-                    MAX(cr.clock_out) OVER (PARTITION BY u.id, cr.location) as location_last_clock_out,
-                    cr.clock_in,
-                    cr.clock_out,
+        WITH user_location_summary AS (
+            SELECT 
+                u.id as user_id,
+                u.username,
+                u.full_name,
+                cr.id as record_id,
+                cr.location,
+                COUNT(cr.id) OVER (PARTITION BY u.id) as total_records,
+                COUNT(cr.id) OVER (PARTITION BY u.id, cr.location) as location_records,
+                SUM(
                     CASE 
                         WHEN cr.clock_out IS NOT NULL 
                         THEN TIMESTAMPDIFF(SECOND, cr.clock_in, cr.clock_out)
                         ELSE TIMESTAMPDIFF(SECOND, cr.clock_in, NOW())
-                    END / 3600 as individual_hours
-                FROM users u
-                LEFT JOIN clock_records cr ON u.id = cr.user_id
-                WHERE cr.clock_in BETWEEN ? AND ?
-            )
-            SELECT 
-                user_id,
-                username,
-                full_name,
-                location,
-                total_records,
-                location_records,
-                ROUND(total_hours, 2) as total_hours,
-                ROUND(location_hours, 2) as location_hours,
-                first_clock_in,
-                last_clock_out,
-                location_first_clock_in,
-                location_last_clock_out,
-                clock_in,
-                clock_out,
-                ROUND(individual_hours, 4) as individual_hours
-            FROM user_location_summary
-            ORDER BY 
-                user_id,
-                location,
-                clock_in;   
-                    `;
+                    END
+                ) OVER (PARTITION BY u.id) / 3600 as total_hours,
+                SUM(
+                    CASE 
+                        WHEN cr.clock_out IS NOT NULL 
+                        THEN TIMESTAMPDIFF(SECOND, cr.clock_in, cr.clock_out)
+                        ELSE TIMESTAMPDIFF(SECOND, cr.clock_in, NOW())
+                    END
+                ) OVER (PARTITION BY u.id, cr.location) / 3600 as location_hours,
+                MIN(cr.clock_in) OVER (PARTITION BY u.id) as first_clock_in,
+                MAX(cr.clock_out) OVER (PARTITION BY u.id) as last_clock_out,
+                MIN(cr.clock_in) OVER (PARTITION BY u.id, cr.location) as location_first_clock_in,
+                MAX(cr.clock_out) OVER (PARTITION BY u.id, cr.location) as location_last_clock_out,
+                cr.clock_in,
+                cr.clock_out,
+                CASE 
+                    WHEN cr.clock_out IS NOT NULL 
+                    THEN TIMESTAMPDIFF(SECOND, cr.clock_in, cr.clock_out)
+                    ELSE TIMESTAMPDIFF(SECOND, cr.clock_in, NOW())
+                END / 3600 as individual_hours
+            FROM users u
+            LEFT JOIN clock_records cr ON u.id = cr.user_id
+            WHERE cr.clock_in BETWEEN ? AND ?
+        )
+        SELECT * FROM user_location_summary
+        ORDER BY user_id, clock_in DESC
+        `;
 
         const [summary] = await db.query(query, [start_date, end_date]);
 
@@ -82,10 +61,20 @@ exports.getRecordsSummaryByPeriod = async (req, res) => {
         const formattedSummary = summary.map(record => ({
             ...record,
             total_hours: Number(record.total_hours).toFixed(2),
+            location_hours: Number(record.location_hours).toFixed(2),
+            individual_hours: Number(record.individual_hours).toFixed(2),
             first_clock_in: moment(record.first_clock_in).format('YYYY-MM-DD HH:mm:ss'),
             last_clock_out: record.last_clock_out ? 
                 moment(record.last_clock_out).format('YYYY-MM-DD HH:mm:ss') : 
-                'Still clocked in'
+                'Still clocked in',
+            location_first_clock_in: moment(record.location_first_clock_in).format('YYYY-MM-DD HH:mm:ss'),
+            location_last_clock_out: record.location_last_clock_out ?
+                moment(record.location_last_clock_out).format('YYYY-MM-DD HH:mm:ss') :
+                'Still clocked in',
+            clock_in: moment(record.clock_in).format('YYYY-MM-DD HH:mm:ss'),
+            clock_out: record.clock_out ?
+                moment(record.clock_out).format('YYYY-MM-DD HH:mm:ss') :
+                null
         }));
 
         res.json(formattedSummary);
@@ -94,7 +83,6 @@ exports.getRecordsSummaryByPeriod = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
-
 // Get detailed records for a specific user
 exports.getUserRecords = async (req, res) => {
     try {
@@ -178,15 +166,11 @@ exports.getUserRecords = async (req, res) => {
 };
 
 // Modify a clock record
+
 exports.modifyRecord = async (req, res) => {
     try {
         const { id } = req.params;
-        const { clock_in, clock_out, notes } = req.body;
-
-        console.log('Modify Record Request:', {
-            id,
-            body: req.body
-        });
+        const { clock_in, clock_out, notes, location } = req.body;
 
         // Validate required fields
         if (!clock_in) {
@@ -195,7 +179,7 @@ exports.modifyRecord = async (req, res) => {
             });
         }
 
-        // Validate input dates
+        // Validate dates
         if (!moment(clock_in).isValid()) {
             return res.status(400).json({ 
                 error: 'Invalid clock_in date format' 
@@ -210,7 +194,7 @@ exports.modifyRecord = async (req, res) => {
 
         // Get existing record
         const [existingRecord] = await db.query(
-            'SELECT * FROM clock_records WHERE id = ?',
+            'SELECT cr.*, u.username as user_name FROM clock_records cr JOIN users u ON cr.user_id = u.id WHERE cr.id = ?',
             [id]
         );
 
@@ -223,7 +207,7 @@ exports.modifyRecord = async (req, res) => {
         // Calculate hours if clock_out is provided
         let hours = null;
         if (clock_out) {
-            hours = (new Date(clock_out) - new Date(clock_in)) / (1000 * 60 * 60);
+            hours = moment(clock_out).diff(moment(clock_in), 'hours', true);
             if (hours < 0 || hours > 24) {
                 return res.status(400).json({ 
                     error: 'Invalid time range. Hours must be between 0 and 24' 
@@ -231,13 +215,23 @@ exports.modifyRecord = async (req, res) => {
             }
         }
 
+        // Prepare modification note
+        const modificationNote = `
+            Modified by admin (${req.user.username}) on ${moment().format('YYYY-MM-DD HH:mm:ss')}
+            Previous: In: ${moment(existingRecord[0].clock_in).format('YYYY-MM-DD HH:mm:ss')} 
+            ${existingRecord[0].clock_out ? 'Out: ' + moment(existingRecord[0].clock_out).format('YYYY-MM-DD HH:mm:ss') : ''}
+            ${existingRecord[0].notes ? '\nOriginal Notes: ' + existingRecord[0].notes : ''}
+            \nNew Notes: ${notes || 'No notes provided'}
+        `.trim();
+
         // Update record
         const updateQuery = `
             UPDATE clock_records 
             SET clock_in = ?,
                 clock_out = ?,
-                notes = CONCAT(IFNULL(notes, ''), '\nModified by admin: ', ?),
+                notes = ?,
                 status = ?,
+                location = ?,
                 modified_by = ?,
                 updated_at = NOW()
             WHERE id = ?
@@ -246,8 +240,9 @@ exports.modifyRecord = async (req, res) => {
         await db.query(updateQuery, [
             clock_in,
             clock_out,
-            notes || 'No notes provided',
+            modificationNote,
             clock_out ? 'out' : 'in',
+            location,
             req.user.id,
             id
         ]);
@@ -263,8 +258,18 @@ exports.modifyRecord = async (req, res) => {
                 'UPDATE',
                 'clock_records',
                 id,
-                JSON.stringify(existingRecord[0]),
-                JSON.stringify({ clock_in, clock_out, notes }),
+                JSON.stringify({
+                    clock_in: existingRecord[0].clock_in,
+                    clock_out: existingRecord[0].clock_out,
+                    notes: existingRecord[0].notes,
+                    location: existingRecord[0].location
+                }),
+                JSON.stringify({
+                    clock_in,
+                    clock_out,
+                    notes,
+                    location
+                }),
                 req.ip
             ]
         );
@@ -273,11 +278,13 @@ exports.modifyRecord = async (req, res) => {
             message: 'Record updated successfully',
             record: {
                 id,
-                clock_in,
-                clock_out,
+                user_name: existingRecord[0].user_name,
+                clock_in: moment(clock_in).format('YYYY-MM-DD HH:mm:ss'),
+                clock_out: clock_out ? moment(clock_out).format('YYYY-MM-DD HH:mm:ss') : null,
                 hours_worked: hours ? hours.toFixed(2) : null,
-                notes,
-                modified_by: req.user.username
+                location,
+                modified_by: req.user.username,
+                modified_at: moment().format('YYYY-MM-DD HH:mm:ss')
             }
         });
     } catch (error) {
