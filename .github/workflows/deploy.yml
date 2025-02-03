@@ -33,14 +33,6 @@ jobs:
             # Pull latest changes
             git pull origin main
             
-            # Load NVM
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            
-            # Use Node
-            nvm install 16
-            nvm use 16
-            
             # Client build
             cd client 
             npm install
