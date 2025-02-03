@@ -18,29 +18,49 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
+            # Source profile and bashrc
+            source ~/.profile
+            source ~/.bashrc
+            
+            # Debug: Print environment
+            echo "Current PATH: $PATH"
+            echo "Current directory: $(pwd)"
+            
+            # Navigate to project
             cd ~/clockingApp
             
-            # Configure git to use token
+            # Update from git using HTTPS
             git config --global credential.helper store
-            echo "https://${{ secrets.GH_TOKEN }}@github.com" > ~/.git-credentials
-            
-            # Update repository
-            git fetch --all
+            git config --global user.email "yao.s.1216@gmail.com"
+            git config --global user.name "Yao Song"
+            git fetch origin
             git reset --hard origin/main
+            
+            # Use specific Node version
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            nvm use 18
+            
+            # Debug: Print versions
+            node -v
+            npm -v
             
             # Client build
             echo "Building client..."
             cd client 
+            rm -rf node_modules package-lock.json
             npm install
             npm run build
             
             # Server setup
             echo "Setting up server..."
             cd ../server 
+            rm -rf node_modules package-lock.json
             npm install
             
             # Return to project root
             cd ..
             
             # Restart PM2
+            export PATH="$PATH:$HOME/.npm-global/bin:/usr/local/bin"
             pm2 restart ecosystem.config.js
