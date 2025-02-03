@@ -18,12 +18,15 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
+            # Export NVM directory
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            
             # Navigate to project directory
             cd ~/clockingApp
             
-            # Force reset to match remote repository
-            git fetch origin
-            git reset --hard origin/main  # Add this line to force update
+            # Pull latest changes
+            git pull origin main
             
             # Client build
             echo "Building client..."
@@ -36,6 +39,14 @@ jobs:
             cd ../server 
             npm install
             
-            # Return to project root and restart PM2
+            # Return to project root
             cd ..
-            pm2 restart ecosystem.config.js
+            
+            # Stop current PM2 processes
+            pm2 stop ecosystem.config.js || true
+            
+            # Start/Reload with ecosystem file
+            pm2 start ecosystem.config.js
+
+            # Save PM2 configuration
+            pm2 save
