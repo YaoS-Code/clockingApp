@@ -25,23 +25,29 @@ jobs:
             # Navigate to project
             cd ~/clockingApp
             
-            # Ensure correct permissions
-            chmod 700 ~/.ssh
-            chmod 600 ~/.ssh/id_ed25519
-            chmod 644 ~/.ssh/id_ed25519.pub
+            # Print Node and npm versions
+            echo "Node version: $(node --version)"
+            echo "NPM version: $(npm --version)"
             
-            # Pull latest changes
+            # Pull latest changes using SSH
             git pull origin main
             
             # Client build
+            echo "Building client..."
             cd client 
-            npm install
-            npm run build
+            rm -rf node_modules package-lock.json
+            /usr/bin/npm install
+            /usr/bin/npm run build
             
             # Server setup
+            echo "Setting up server..."
             cd ../server 
-            npm install
+            rm -rf node_modules package-lock.json
+            /usr/bin/npm install
             
-            # Return to root and restart
+            # Return to root and restart PM2
             cd ..
+            
+            # Ensure PM2 is installed globally
             pm2 restart ecosystem.config.js
+            
