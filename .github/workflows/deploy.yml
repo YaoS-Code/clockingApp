@@ -18,25 +18,37 @@ jobs:
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
           script: |
-            # Source profile and bashrc
-            source ~/.profile
-            source ~/.bashrc
+            # Export NVM and PATH
+            export NVM_DIR="/home/mmc/.nvm"
+            export PATH="/home/mmc/.nvm/versions/node/v20.18.2/bin:$PATH"
             
             # Navigate to project
             cd ~/clockingApp
             
+            # Debug: Print versions
+            echo "Node version: $(/home/mmc/.nvm/versions/node/v20.18.2/bin/node --version)"
+            echo "NPM version: $(/home/mmc/.nvm/versions/node/v20.18.2/bin/npm --version)"
+            
             # Pull latest changes
             git pull origin main
             
-            # Client setup
-            cd client
-            npm install
-            npm run build
-
-            # Server setup
-            cd ../server 
-            npm install
+            # Client build
+            echo "Building client..."
+            cd client 
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm run build
             
-            # Return to root and restart
+            # Server setup
+            echo "Setting up server..."
+            cd ../server 
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install
+            
+            # Return to root
             cd ..
-            pm2 restart ecosystem.config.js
+            
+            # Ensure PM2 is installed globally
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install -g pm2
+            
+            # Restart PM2
+            /home/mmc/.npm-global/bin/pm2 restart ecosystem.config.js || \
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/pm2 restart ecosystem.config.js
