@@ -14,7 +14,7 @@ const app = express();
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: ['http://216.232.48.211:3001', 'http://localhost:3001', 'https://clock.mmcwellness.ca'],
+  origin: ['http://216.232.48.211:3001', 'http://localhost:3001', 'http://localhost:3000', 'https://clock.mmcwellness.ca'],
   credentials: true
 }));
 app.use(express.json()); // Make sure this is here
@@ -37,7 +37,7 @@ app.use((req, res, next) => {
 });
 
 // Initialize scheduler
-SchedulerService.initializeScheduledTasks();
+// SchedulerService.initializeScheduledTasks();
 
 // Error handling
 app.use((err, req, res, next) => {
