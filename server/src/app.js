@@ -2,10 +2,12 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const SchedulerService = require('./services/schedulerService');
 
 const authRoutes = require('./routes/authRoutes');
 const clockRoutes = require('./routes/clockRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const reminderRoutes = require('./routes/reminderRoutes'); // Add this line
 
 const app = express();
 
@@ -22,6 +24,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/auth', authRoutes);
 app.use('/api/clock', clockRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/reminders', reminderRoutes);
 
 // Debug middleware to log requests
 app.use((req, res, next) => {
@@ -32,6 +35,9 @@ app.use((req, res, next) => {
     });
     next();
 });
+
+// Initialize scheduler
+SchedulerService.initializeScheduledTasks();
 
 // Error handling
 app.use((err, req, res, next) => {

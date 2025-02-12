@@ -1,1 +1,8 @@
 .env
+.env.test
+node_modules/
+coverage/
+
+# ...existing entries...
+src/attachments/email/*
+!src/attachments/email/.gitkeep

@@ -9,7 +9,23 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
+
+      - name: Create server env file
+        run: |
+          cd server
+          echo "DB_HOST=localhost" >> .env
+          echo "DB_USER=${{ secrets.DB_USER }}" >> .env
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          echo "DB_NAME=clockingapp" >> .env
+          echo "DB_PORT=3306" >> .env
+          echo "SMTP_HOST=smtp.gmail.com" >> .env
+          echo "SMTP_PORT=587" >> .env
+          echo "SMTP_USER=specialist@mmcwellness.ca" >> .env
+          echo "SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}" >> .env
+          echo "SMTP_FROM=specialist@mmcwellness.ca" >> .env
+          echo "SMTP_CC=info@mmcwellness.ca" >> .env
+          echo "NODE_ENV=production" >> .env
 
       - name: Deploy to server
         uses: appleboy/ssh-action@master
@@ -17,37 +33,43 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
+          script_stop: true
           script: |
             # Export NVM and PATH
             export NVM_DIR="/home/mmc/.nvm"
             export PATH="/home/mmc/.nvm/versions/node/v20.18.2/bin:$PATH"
             
             # Navigate to project
-            cd ~/clockingApp
+            cd ~/clockingApp || exit 1
             
             # Debug: Print versions
             echo "Node version: $(/home/mmc/.nvm/versions/node/v20.18.2/bin/node --version)"
             echo "NPM version: $(/home/mmc/.nvm/versions/node/v20.18.2/bin/npm --version)"
             
             # Pull latest changes
-            git pull origin main
+            git pull origin main || exit 1
             
             # Client build
             echo "Building client..."
-            cd client 
-            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install
-            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm run build
+            cd client || exit 1
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install || exit 1
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm run build || exit 1
             
             # Server setup
             echo "Setting up server..."
-            cd ../server 
-            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install
+            cd ../server || exit 1
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install || exit 1
             
-            # Return to root
-            cd ..
+            # Copy env file
+            cp ~/.env .env || exit 1
             
             # Ensure PM2 is installed globally
-            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install -g pm2
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install -g pm2 || exit 1
             
             # Restart PM2
-            pm2 restart ecosystem.config.js
+            pm2 restart ecosystem.config.js || {
+              echo "Failed to restart PM2, attempting to start..."
+              pm2 start ecosystem.config.js
+            }
+            
+            echo "Deployment completed successfully!"
