@@ -65,6 +65,7 @@ jobs:
             # Ensure PM2 is installed globally
             /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install -g pm2
             
+            cd ..
             # Restart PM2 with fallback to start
             pm2 restart ecosystem.config.js || pm2 start ecosystem.config.js
             
