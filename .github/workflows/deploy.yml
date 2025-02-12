@@ -33,43 +33,39 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USERNAME }}
           password: ${{ secrets.SERVER_PASSWORD }}
-          script_stop: true
           script: |
             # Export NVM and PATH
             export NVM_DIR="/home/mmc/.nvm"
             export PATH="/home/mmc/.nvm/versions/node/v20.18.2/bin:$PATH"
             
-            # Navigate to project
-            cd ~/clockingApp || exit 1
+            # Navigate to project and handle git conflicts
+            cd ~/clockingApp
+            git checkout main
+            git fetch origin main
+            git reset --hard origin/main
             
             # Debug: Print versions
             echo "Node version: $(/home/mmc/.nvm/versions/node/v20.18.2/bin/node --version)"
             echo "NPM version: $(/home/mmc/.nvm/versions/node/v20.18.2/bin/npm --version)"
             
-            # Pull latest changes
-            git pull origin main || exit 1
-            
             # Client build
             echo "Building client..."
-            cd client || exit 1
-            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install || exit 1
-            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm run build || exit 1
+            cd client
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm run build
             
             # Server setup
             echo "Setting up server..."
-            cd ../server || exit 1
-            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install || exit 1
+            cd ../server
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install
             
             # Copy env file
-            cp ~/.env .env || exit 1
+            cp ~/.env .env
             
             # Ensure PM2 is installed globally
-            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install -g pm2 || exit 1
+            /home/mmc/.nvm/versions/node/v20.18.2/bin/npm install -g pm2
             
-            # Restart PM2
-            pm2 restart ecosystem.config.js || {
-              echo "Failed to restart PM2, attempting to start..."
-              pm2 start ecosystem.config.js
-            }
+            # Restart PM2 with fallback to start
+            pm2 restart ecosystem.config.js || pm2 start ecosystem.config.js
             
             echo "Deployment completed successfully!"
