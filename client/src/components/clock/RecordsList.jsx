@@ -19,57 +19,87 @@ import {
   Box,
   Chip,
 } from '@mui/material';
-import { format } from 'date-fns';
+import { format, isValid, parse } from 'date-fns';
 import api from '../../services/api';
+import { getInitialDateRange } from '../../utils/dateUtils'; // Add this import
 
 function RecordsList() {
   const [records, setRecords] = useState([]);
   const [filteredRecords, setFilteredRecords] = useState([]);
   const [totalHours, setTotalHours] = useState(0);
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState(() => ({
     location: 'all',
-    startDate: format(new Date().setDate(1), 'yyyy-MM-dd'), // First day of current month
-    endDate: format(new Date(), 'yyyy-MM-dd'), // Today
-  });
+    ...getInitialDateRange() // This will set startDate and endDate correctly
+  }));
 
   const locations = [
     { value: 'all', label: 'All Locations' },
     { value: 'MMC', label: 'MMC' },
-    { value: 'Skinart', label: 'Skinart' },
+    { value: 'SkinartMD', label: 'SkinartMD' },
     { value: 'RAAC', label: 'RAAC' },
+    { value: 'Remote', label: 'Remote' },
+    { value: 'Other', label: 'Other' }
   ];
 
   const fetchRecords = useCallback(async () => {
     try {
-      const response = await api.get('/clock/records');
+      // 调整结束日期以包含整天
+      const endDate = new Date(filters.end_date);
+      endDate.setHours(23, 59, 59, 999);
+      const adjustedEndDate = format(endDate, 'yyyy-MM-dd HH:mm:ss');
+
+      const params = {
+        start_date: filters.start_date,
+        end_date: adjustedEndDate,
+        ...(filters.location !== 'all' && { location: filters.location })
+      };
+
+      const response = await api.get('/clock/records', { params });
       setRecords(response.data);
     } catch (err) {
       console.error('Failed to fetch records', err);
     }
-  }, []);
+  }, [filters]);
 
   const filterRecords = useCallback(() => {
     let filtered = [...records];
 
-    // Filter by date range
-    filtered = filtered.filter(record => {
-      const recordDate = new Date(record.clock_in).toISOString().split('T')[0];
-      return recordDate >= filters.startDate && recordDate <= filters.endDate;
-    });
-
-    // Filter by location
+    // Filter by location only since date filtering is now handled by the API
     if (filters.location !== 'all') {
       filtered = filtered.filter(record => record.location === filters.location);
     }
 
     // Calculate total hours
     const total = filtered.reduce((acc, record) => {
-      return acc + (record.hours_worked || 0);
+      const hours = parseFloat(record.hours_worked);
+      return acc + (isNaN(hours) ? 0 : hours);
     }, 0);
 
     setTotalHours(total);
     setFilteredRecords(filtered);
   }, [records, filters]);
+
+  const handleDateChange = (field, value) => {
+    // 允许空值，重置为初始日期
+    if (!value) {
+      setFilters(prev => ({
+        ...prev,
+        [field]: getInitialDateRange()[field]
+      }));
+      return;
+    }
+
+    // 尝试解析日期
+    const parsedDate = parse(value, 'yyyy-MM-dd', new Date());
+
+    // 如果是有效日期，更新状态
+    if (isValid(parsedDate)) {
+      setFilters(prev => ({
+        ...prev,
+        [field]: format(parsedDate, 'yyyy-MM-dd')
+      }));
+    }
+  };
 
   useEffect(() => {
     fetchRecords();
@@ -84,6 +114,12 @@ function RecordsList() {
   };
 
   const formatDuration = (hours) => {
+    if (typeof hours !== 'number') {
+      hours = parseFloat(hours);
+    }
+    if (isNaN(hours)) {
+      return '0h 0m';
+    }
     const wholeHours = Math.floor(hours);
     const minutes = Math.round((hours - wholeHours) * 60);
     return `${wholeHours}h ${minutes}m`;
@@ -118,20 +154,30 @@ function RecordsList() {
             <TextField
               fullWidth
               label="Start Date"
-              type="date"
-              value={filters.startDate}
-              onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
+              type="text"
+              value={filters.start_date}
+              onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
+              onBlur={(e) => handleDateChange('start_date', e.target.value)}
               InputLabelProps={{ shrink: true }}
+              placeholder="YYYY-MM-DD"
+              inputProps={{
+                maxLength: 10
+              }}
             />
           </Grid>
           <Grid item xs={12} md={4}>
             <TextField
               fullWidth
               label="End Date"
-              type="date"
-              value={filters.endDate}
-              onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
+              type="text"
+              value={filters.end_date}
+              onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
+              onBlur={(e) => handleDateChange('end_date', e.target.value)}
               InputLabelProps={{ shrink: true }}
+              placeholder="YYYY-MM-DD"
+              inputProps={{
+                maxLength: 10
+              }}
             />
           </Grid>
         </Grid>
@@ -169,6 +215,7 @@ function RecordsList() {
                 <TableCell sx={{ fontWeight: 'bold' }}>Clock Out</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Location</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Hours</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Break</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Notes</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
               </TableRow>
@@ -189,7 +236,10 @@ function RecordsList() {
                     {record.clock_out ? formatDateTime(record.clock_out) : '-'}
                   </TableCell>
                   <TableCell>{record.location}</TableCell>
-                  <TableCell>{record.hours_worked ? formatDuration(record.hours_worked) : '-'}</TableCell>
+                  <TableCell>
+                    {record.hours_worked ? formatDuration(parseFloat(record.hours_worked)) : '-'}
+                  </TableCell>
+                  <TableCell>{record.break_minutes || '0'} min</TableCell>
                   <TableCell>{record.notes || '-'}</TableCell>
                   <TableCell>
                     <Chip
@@ -200,6 +250,30 @@ function RecordsList() {
                   </TableCell>
                 </TableRow>
               ))}
+              {/* Total Row */}
+              {filteredRecords.length > 0 && (
+                <TableRow
+                  sx={{
+                    backgroundColor: 'primary.main',
+                    color: 'primary.contrastText',
+                    '& .MuiTableCell-root': {
+                      color: 'white',
+                      fontWeight: 'bold',
+                    },
+                  }}
+                >
+                  <TableCell>Total</TableCell>
+                  <TableCell>-</TableCell>
+                  <TableCell>-</TableCell>
+                  <TableCell>-</TableCell>
+                  <TableCell>{formatDuration(totalHours)}</TableCell>
+                  <TableCell>
+                    {filteredRecords.reduce((total, record) => total + (record.break_minutes || 0), 0)} min
+                  </TableCell>
+                  <TableCell>-</TableCell>
+                  <TableCell>-</TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </TableContainer>

@@ -9,20 +9,30 @@ import {
   TextField,
   Button,
 } from '@mui/material';
-import { format } from 'date-fns';
+import { format, addDays, endOfMonth, isValid, parse } from 'date-fns';
 import api from '../../services/api';
+import { getInitialDateRange, getStartDate } from '../../utils/dateUtils';
 
 function AdminDashboard() {
   const [summary, setSummary] = useState([]);
-  const [dateRange, setDateRange] = useState({
-    start_date: format(new Date().setDate(1), 'yyyy-MM-dd'),
-    end_date: format(new Date(), 'yyyy-MM-dd'),
-  });
+  const [dateRange, setDateRange] = useState(getInitialDateRange());
+
+  // Add this useEffect to update the start date based on current date
+  useEffect(() => {
+    const startDate = getStartDate();
+    if (startDate !== dateRange.start_date) {
+      setDateRange(prev => ({
+        ...prev,
+        start_date: startDate
+      }));
+    }
+  }, []);
 
   const fetchSummary = useCallback(async () => {
     try {
+      const adjustedEndDate = format(addDays(new Date(dateRange.end_date), 1), 'yyyy-MM-dd');
       const response = await api.get('/admin/records/summary', {
-        params: dateRange
+        params: { ...dateRange, end_date: adjustedEndDate }
       });
       console.log('Date Range:', dateRange);
       setSummary(response.data);
@@ -42,6 +52,28 @@ function AdminDashboard() {
     return `${wholeHours}h ${minutes}m`;
   };
 
+  const handleDateChange = (field, value) => {
+    // 允许空值，重置为初始日期
+    if (!value) {
+      setDateRange(prev => ({
+        ...prev,
+        [field]: getInitialDateRange()[field]
+      }));
+      return;
+    }
+
+    // 尝试解析日期
+    const parsedDate = parse(value, 'yyyy-MM-dd', new Date());
+
+    // 如果是有效日期，更新状态
+    if (isValid(parsedDate)) {
+      setDateRange(prev => ({
+        ...prev,
+        [field]: format(parsedDate, 'yyyy-MM-dd')
+      }));
+    }
+  };
+
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       {/* Date Range Filters */}
@@ -54,25 +86,34 @@ function AdminDashboard() {
             <TextField
               fullWidth
               label="Start Date"
-              type="date"
+              type="text"
               value={dateRange.start_date}
-              onChange={(e) => setDateRange({ ...dateRange, start_date: e.target.value })}
+              disabled
               InputLabelProps={{ shrink: true }}
+              placeholder="YYYY-MM-DD"
+              inputProps={{
+                maxLength: 10
+              }}
             />
           </Grid>
           <Grid item xs={12} md={4}>
             <TextField
               fullWidth
               label="End Date"
-              type="date"
+              type="text"
               value={dateRange.end_date}
               onChange={(e) => setDateRange({ ...dateRange, end_date: e.target.value })}
+              onBlur={(e) => handleDateChange('end_date', e.target.value)}
               InputLabelProps={{ shrink: true }}
+              placeholder="YYYY-MM-DD"
+              inputProps={{
+                maxLength: 10
+              }}
             />
           </Grid>
           <Grid item xs={12} md={4}>
-            <Button 
-              variant="contained" 
+            <Button
+              variant="contained"
               onClick={fetchSummary}
               fullWidth
             >
@@ -91,8 +132,8 @@ function AdminDashboard() {
                 {user.full_name}
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                <Chip 
-                  label={`Total Hours: ${formatDuration(user.total_hours)}`} 
+                <Chip
+                  label={`Total Hours: ${formatDuration(user.total_hours)}`}
                   color="primary"
                   sx={{ mb: 1 }}
                 />

@@ -9,8 +9,8 @@ exports.clockIn = async (req, res) => {
 
         // Validate location
         if (!ALLOWED_LOCATIONS.includes(location)) {
-            return res.status(400).json({ 
-                error: 'Invalid location. Please select a valid location.' 
+            return res.status(400).json({
+                error: 'Invalid location. Please select a valid location.'
             });
         }
 
@@ -23,8 +23,8 @@ exports.clockIn = async (req, res) => {
         );
 
         if (activeClocking.length > 0) {
-            return res.status(400).json({ 
-                error: 'You are already clocked in' 
+            return res.status(400).json({
+                error: 'You are already clocked in'
             });
         }
 
@@ -48,12 +48,23 @@ exports.clockIn = async (req, res) => {
 exports.clockOut = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { notes, location } = req.body;
+        const { notes, location, break_minutes } = req.body;
 
-        // Validate location
-        if (!ALLOWED_LOCATIONS.includes(location)) {
-            return res.status(400).json({ 
-                error: 'Invalid location. Please select a valid location.' 
+        // Get user info to check no_break status
+        const [userInfo] = await db.query(
+            'SELECT no_break FROM users WHERE id = ?',
+            [userId]
+        );
+
+        // If user has no_break set to true, force break_minutes to 0
+        const validatedBreakMinutes = userInfo[0]?.no_break ?
+            0 :
+            (break_minutes !== undefined ? Math.max(0, parseInt(break_minutes) || 0) : 30);
+
+        // Validate location if it's not 'Other'
+        if (location !== 'Other' && !ALLOWED_LOCATIONS.includes(location)) {
+            return res.status(400).json({
+                error: 'Invalid location. Please select a valid location.'
             });
         }
 
@@ -67,8 +78,8 @@ exports.clockOut = async (req, res) => {
         );
 
         if (activeClocking.length === 0) {
-            return res.status(400).json({ 
-                error: 'No active clock-in found' 
+            return res.status(400).json({
+                error: 'No active clock-in found'
             });
         }
 
@@ -77,20 +88,26 @@ exports.clockOut = async (req, res) => {
         const clockOutTime = moment();
         const duration = clockOutTime.diff(clockInTime, 'hours', true);
 
+        // Update the record
         await db.query(
             `UPDATE clock_records 
              SET clock_out = NOW(), 
                  status = 'out', 
                  notes = CONCAT(IFNULL(notes, ''), '\nOut: ', ?),
-                 location = ?
+                 location = ?,
+                 break_minutes = ?
              WHERE id = ?`,
-            [notes, location, activeClocking[0].id]
+            [notes || '', location, validatedBreakMinutes, activeClocking[0].id]
         );
 
-        res.json({ 
+        // Calculate actual hours worked (including break deduction)
+        const actualDuration = duration - (validatedBreakMinutes / 60);
+
+        res.json({
             message: 'Clocked out successfully',
-            duration: duration.toFixed(2),
-            location: location
+            duration: actualDuration.toFixed(2),
+            location: location,
+            break_minutes: validatedBreakMinutes
         });
     } catch (error) {
         console.error('Clock out error:', error);
@@ -101,19 +118,26 @@ exports.clockOut = async (req, res) => {
 exports.getRecords = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { start_date, end_date, location } = req.query;
+        const { start_date, end_date } = req.query;
 
         let query = `
             SELECT 
                 cr.*,
-                TIMESTAMPDIFF(SECOND, cr.clock_in, 
-                    CASE 
-                        WHEN cr.clock_out IS NOT NULL THEN cr.clock_out 
-                        ELSE NOW() 
-                    END
-                ) / 3600 as hours_worked,
+                CASE 
+                    WHEN cr.clock_out IS NOT NULL THEN 
+                        ROUND(
+                            (TIMESTAMPDIFF(MINUTE, cr.clock_in, cr.clock_out) - IFNULL(cr.break_minutes, 30)) / 60.0,
+                            2
+                        )
+                    ELSE 
+                        ROUND(
+                            (TIMESTAMPDIFF(MINUTE, cr.clock_in, NOW()) - IFNULL(cr.break_minutes, 30)) / 60.0,
+                            2
+                        )
+                END as hours_worked,
                 u.username,
-                u.full_name
+                u.full_name,
+                u.no_break
             FROM clock_records cr
             JOIN users u ON cr.user_id = u.id
             WHERE cr.user_id = ?
@@ -121,13 +145,8 @@ exports.getRecords = async (req, res) => {
         let params = [userId];
 
         if (start_date && end_date) {
-            query += ` AND cr.clock_in BETWEEN ? AND ?`;
+            query += ` AND cr.clock_in >= ? AND DATE(cr.clock_in) <= DATE(?)`;
             params.push(start_date, end_date);
-        }
-
-        if (location) {
-            query += ` AND cr.location = ?`;
-            params.push(location);
         }
 
         query += ` ORDER BY cr.clock_in DESC`;
@@ -137,11 +156,12 @@ exports.getRecords = async (req, res) => {
         // Format records
         const formattedRecords = records.map(record => ({
             ...record,
-            hours_worked: Number(record.hours_worked).toFixed(2),
+            hours_worked: Number(record.hours_worked || 0).toFixed(2),
             clock_in: moment(record.clock_in).format('YYYY-MM-DD HH:mm:ss'),
-            clock_out: record.clock_out ? 
-                moment(record.clock_out).format('YYYY-MM-DD HH:mm:ss') : 
-                null
+            clock_out: record.clock_out ?
+                moment(record.clock_out).format('YYYY-MM-DD HH:mm:ss') :
+                null,
+            no_break: record.no_break || false
         }));
 
         res.json(formattedRecords);

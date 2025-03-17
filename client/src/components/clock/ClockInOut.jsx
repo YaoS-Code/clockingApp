@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Container, 
-  Paper, 
-  TextField, 
-  Button, 
-  Typography, 
+import {
+  Container,
+  Paper,
+  TextField,
+  Button,
+  Typography,
   Box,
   FormControl,
   InputLabel,
@@ -18,6 +18,8 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
+import { format } from 'date-fns';
+import { isValid } from 'date-fns';
 
 function ClockInOut() {
   const navigate = useNavigate();
@@ -29,6 +31,8 @@ function ClockInOut() {
   const [openDialog, setOpenDialog] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentRecord, setCurrentRecord] = useState(null);
+  const [breakMinutes, setBreakMinutes] = useState(30);
+  const [noBreak, setNoBreak] = useState(false);
 
   const locations = [
     { value: 'MMC', label: 'MMC' },
@@ -47,17 +51,30 @@ function ClockInOut() {
       setLoading(true);
       const response = await api.get('/clock/records');
       const lastRecord = response.data[0]; // Assuming the most recent record is first
-      
-      if (lastRecord && lastRecord.status === 'in') {
-        setIsClockedIn(true);
-        setCurrentRecord(lastRecord);
-        setLocation(lastRecord.location || '');
-        setNotes(lastRecord.notes || '');
+
+      if (lastRecord) {
+        if (lastRecord.status === 'in') {
+          setIsClockedIn(true);
+          setCurrentRecord(lastRecord);
+          setLocation(lastRecord.location || '');
+          setNotes(lastRecord.notes || '');
+          // Format the clock-in time for display
+          const clockInTime = new Date(lastRecord.clock_in);
+          if (isValid(clockInTime)) {
+            setMessage(`Clocked in since: ${format(clockInTime, 'yyyy-MM-dd HH:mm:ss')}`);
+          } else {
+            setMessage('Currently clocked in');
+          }
+        }
+        // Set no_break status and update break minutes accordingly
+        setNoBreak(lastRecord.no_break || false);
+        setBreakMinutes(lastRecord.no_break ? 0 : 30);
       } else {
         setIsClockedIn(false);
         setCurrentRecord(null);
         setLocation('');
         setNotes('');
+        setMessage('');
       }
     } catch (err) {
       console.error('Failed to fetch clock status', err);
@@ -74,18 +91,18 @@ function ClockInOut() {
         setMessage('Please select a location');
         return;
       }
-      
+
       setLoading(true);
-      const response = await api.post('/clock/in', { 
-        notes, 
-        location: finalLocation 
+      const response = await api.post('/clock/in', {
+        notes,
+        location: finalLocation
       });
-      
+
       setMessage(response.data.message);
       setIsClockedIn(true);
       setCurrentRecord(response.data);
       setOpenDialog(false);
-      
+
       // Optional: Redirect to records page
       // navigate('/records');
     } catch (err) {
@@ -99,21 +116,32 @@ function ClockInOut() {
     try {
       setLoading(true);
       const finalLocation = location === 'Other' ? otherLocation : location;
-      const response = await api.post('/clock/out', { 
-        notes, 
-        location: finalLocation 
+
+      // Log the request data for debugging
+      console.log('Clock out request data:', {
+        notes,
+        location: finalLocation,
+        break_minutes: parseInt(breakMinutes)
       });
-      
+
+      const response = await api.post('/clock/out', {
+        notes,
+        location: finalLocation,
+        break_minutes: parseInt(breakMinutes)
+      });
+
       setMessage(response.data.message);
       setIsClockedIn(false);
       setCurrentRecord(null);
       setLocation('');
       setOtherLocation('');
       setNotes('');
-      
+      setBreakMinutes(30);
+
       // Redirect to records page after successful clock out
       navigate('/records');
     } catch (err) {
+      console.error('Clock out error:', err.response?.data || err);
       setMessage(err.response?.data?.error || 'Clock out failed');
     } finally {
       setLoading(false);
@@ -142,11 +170,11 @@ function ClockInOut() {
         <Typography variant="h4" align="center" gutterBottom>
           {isClockedIn ? 'Currently Clocked In' : 'Clock In'}
         </Typography>
-        
+
         {message && (
-          <Typography 
-            color={message.includes('failed') ? 'error' : 'primary'} 
-            align="center" 
+          <Typography
+            color={message.includes('failed') ? 'error' : 'primary'}
+            align="center"
             gutterBottom
           >
             {message}
@@ -192,6 +220,25 @@ function ClockInOut() {
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
           />
+
+          {isClockedIn && !noBreak && (
+            <TextField
+              fullWidth
+              label="Break Minutes"
+              type="number"
+              margin="normal"
+              value={breakMinutes}
+              onChange={(e) => setBreakMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+              inputProps={{ min: 0 }}
+              helperText="Default break time is 30 minutes"
+            />
+          )}
+
+          {isClockedIn && noBreak && (
+            <Typography color="textSecondary" sx={{ mt: 2, mb: 1 }}>
+              No break time will be deducted for this account.
+            </Typography>
+          )}
 
           {isClockedIn ? (
             <Button
