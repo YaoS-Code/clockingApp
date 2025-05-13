@@ -5,19 +5,19 @@ const db = require('../config/database');
 exports.register = async (req, res) => {
     try {
         const { username, password, email, full_name, role = 'user' } = req.body;
-        
+
         // Additional validation for admin creating users
         if (!username || !password || !email || !full_name) {
-            return res.status(400).json({ 
-                error: 'All fields are required' 
+            return res.status(400).json({
+                error: 'All fields are required'
             });
         }
 
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
-            return res.status(400).json({ 
-                error: 'Invalid email format' 
+            return res.status(400).json({
+                error: 'Invalid email format'
             });
         }
 
@@ -28,8 +28,8 @@ exports.register = async (req, res) => {
         );
 
         if (existingUsers.length > 0) {
-            return res.status(400).json({ 
-                error: 'Username or email already exists' 
+            return res.status(400).json({
+                error: 'Username or email already exists'
             });
         }
 
@@ -99,10 +99,10 @@ exports.login = async (req, res) => {
 
         // Generate JWT token
         const token = jwt.sign(
-            { 
-                id: user.id, 
+            {
+                id: user.id,
                 username: user.username,
-                role: user.role 
+                role: user.role
             },
             process.env.JWT_SECRET,
             { expiresIn: '24h' }

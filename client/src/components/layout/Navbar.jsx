@@ -28,6 +28,9 @@ function Navbar() {
             <Button color="inherit" component={Link} to="/records">
               Records
             </Button>
+            <Button color="inherit" component={Link} to="/correction-requests">
+              Corrections
+            </Button>
             {user?.role === 'admin' && (
               <>
                 <Button color="inherit" component={Link} to="/admin/users">

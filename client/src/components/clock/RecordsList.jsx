@@ -18,10 +18,17 @@ import {
   TextField,
   Box,
   Chip,
+  Button,
+  IconButton,
+  Tooltip,
+  Snackbar,
+  Alert
 } from '@mui/material';
+import EditIcon from '@mui/icons-material/Edit';
 import { format, isValid, parse } from 'date-fns';
 import api from '../../services/api';
 import { getInitialDateRange } from '../../utils/dateUtils'; // Add this import
+import RequestCorrectionForm from './RequestCorrectionForm';
 
 function RecordsList() {
   const [records, setRecords] = useState([]);
@@ -31,6 +38,13 @@ function RecordsList() {
     location: 'all',
     ...getInitialDateRange() // This will set startDate and endDate correctly
   }));
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [correctionFormOpen, setCorrectionFormOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success'
+  });
 
   const locations = [
     { value: 'all', label: 'All Locations' },
@@ -110,12 +124,29 @@ function RecordsList() {
   }, [filterRecords]);
 
   const formatDateTime = (dateString) => {
-    return format(new Date(dateString), 'yyyy-MM-dd HH:mm:ss');
+    if (!dateString) return 'N/A';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date:', dateString);
+        return 'Invalid Date';
+      }
+      return format(date, 'yyyy-MM-dd HH:mm:ss');
+    } catch (error) {
+      console.error('Error formatting date:', error, dateString);
+      return 'Invalid Date';
+    }
   };
 
   const formatDuration = (hours) => {
+    if (!hours) return '0h 0m';
     if (typeof hours !== 'number') {
-      hours = parseFloat(hours);
+      try {
+        hours = parseFloat(hours);
+      } catch (error) {
+        console.error('Error parsing hours:', error);
+        return '0h 0m';
+      }
     }
     if (isNaN(hours)) {
       return '0h 0m';
@@ -123,6 +154,24 @@ function RecordsList() {
     const wholeHours = Math.floor(hours);
     const minutes = Math.round((hours - wholeHours) * 60);
     return `${wholeHours}h ${minutes}m`;
+  };
+
+  const handleRequestCorrection = (record) => {
+    setSelectedRecord(record);
+    setCorrectionFormOpen(true);
+  };
+
+  const handleCorrectionSuccess = () => {
+    setSnackbar({
+      open: true,
+      message: 'Correction request submitted successfully',
+      severity: 'success'
+    });
+    fetchRecords(); // Refresh the records
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar(prev => ({ ...prev, open: false }));
   };
 
   return (
@@ -218,6 +267,7 @@ function RecordsList() {
                 <TableCell sx={{ fontWeight: 'bold' }}>Break</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Notes</TableCell>
                 <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
+                <TableCell sx={{ fontWeight: 'bold' }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -229,13 +279,20 @@ function RecordsList() {
                   }}
                 >
                   <TableCell>
-                    {format(new Date(record.clock_in), 'yyyy-MM-dd')}
+                    {record.clock_in ? (() => {
+                      try {
+                        const date = new Date(record.clock_in);
+                        return isValid(date) ? format(date, 'yyyy-MM-dd') : 'Invalid Date';
+                      } catch (error) {
+                        return 'Invalid Date';
+                      }
+                    })() : 'N/A'}
                   </TableCell>
                   <TableCell>{formatDateTime(record.clock_in)}</TableCell>
                   <TableCell>
                     {record.clock_out ? formatDateTime(record.clock_out) : '-'}
                   </TableCell>
-                  <TableCell>{record.location}</TableCell>
+                  <TableCell>{record.location || '-'}</TableCell>
                   <TableCell>
                     {record.hours_worked ? formatDuration(parseFloat(record.hours_worked)) : '-'}
                   </TableCell>
@@ -243,10 +300,23 @@ function RecordsList() {
                   <TableCell>{record.notes || '-'}</TableCell>
                   <TableCell>
                     <Chip
-                      label={record.status}
+                      label={record.status || 'unknown'}
                       color={record.status === 'in' ? 'warning' : 'success'}
                       size="small"
                     />
+                  </TableCell>
+                  <TableCell>
+                    {record.status === 'out' && (
+                      <Tooltip title="Request Correction">
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          onClick={() => handleRequestCorrection(record)}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -263,6 +333,7 @@ function RecordsList() {
                   }}
                 >
                   <TableCell>Total</TableCell>
+                  <TableCell>-</TableCell>
                   <TableCell>-</TableCell>
                   <TableCell>-</TableCell>
                   <TableCell>-</TableCell>
@@ -284,6 +355,32 @@ function RecordsList() {
           </Typography>
         )}
       </Paper>
+
+      {/* Correction Request Form */}
+      {selectedRecord && (
+        <RequestCorrectionForm
+          open={correctionFormOpen}
+          onClose={() => setCorrectionFormOpen(false)}
+          record={selectedRecord}
+          onSuccess={handleCorrectionSuccess}
+        />
+      )}
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          onClose={handleCloseSnackbar}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 }

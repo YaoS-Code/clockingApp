@@ -18,43 +18,54 @@ function AdminNavbar() {
   return (
     <AppBar position="static">
       <Toolbar>
-        <Typography 
-          variant="h6" 
-          component={Link} 
-          to="/admin/summary" 
-          sx={{ 
-            flexGrow: 1, 
-            textDecoration: 'none', 
-            color: 'inherit' 
+        <Typography
+          variant="h6"
+          component={Link}
+          to="/admin/summary"
+          sx={{
+            flexGrow: 1,
+            textDecoration: 'none',
+            color: 'inherit'
           }}
         >
           Admin Dashboard
         </Typography>
-        
-        <Button 
-          color="inherit" 
-          component={Link} 
+
+        <Button
+          color="inherit"
+          component={Link}
           to="/admin/summary"
-          sx={{ 
+          sx={{
             backgroundColor: location.pathname === '/admin/summary' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'
           }}
         >
           Summary
         </Button>
-        
-        <Button 
-          color="inherit" 
-          component={Link} 
+
+        <Button
+          color="inherit"
+          component={Link}
           to="/admin/users"
-          sx={{ 
+          sx={{
             backgroundColor: location.pathname === '/admin/users' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'
           }}
         >
           Users
         </Button>
-        
-        <Button 
-          color="inherit" 
+
+        <Button
+          color="inherit"
+          component={Link}
+          to="/admin/correction-requests"
+          sx={{
+            backgroundColor: location.pathname === '/admin/correction-requests' ? 'rgba(255, 255, 255, 0.1)' : 'transparent'
+          }}
+        >
+          Corrections
+        </Button>
+
+        <Button
+          color="inherit"
           onClick={handleLogout}
         >
           Logout

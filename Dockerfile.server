@@ -1,0 +1,27 @@
+FROM node:20-alpine
+
+# 设置时区为温哥华时区
+ENV TZ=America/Vancouver
+
+# 安装tzdata并设置时区
+RUN apk add --no-cache tzdata && \
+    cp /usr/share/zoneinfo/America/Vancouver /etc/localtime && \
+    echo "America/Vancouver" > /etc/timezone
+
+WORKDIR /app
+
+# Copy package.json and package-lock.json
+COPY server/package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy server source code
+COPY server/ ./
+
+# Create directory for attachments
+RUN mkdir -p src/attachments/email
+
+EXPOSE 13000
+
+CMD ["node", "src/app.js"] 

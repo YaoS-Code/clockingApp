@@ -2,26 +2,26 @@ const path = require('path');
 const logger = require('../utils/logger');
 
 class TemplateService {
-  static getEmailTemplate(provider, appointment) {
-    const clinicInfo = {
-      name: 'Midtown Medical Clinic',
-      address: '130-8780 Blundell Rd, Richmond, BC, V7A 4H2',
-      phone: '604-629-8968',
-      fax: '604-632-4999',
-      hours: 'Mon-Fri 9:00AM-5:00PM'
-    };
+    static getEmailTemplate(provider, appointment) {
+        const clinicInfo = {
+            name: 'Midtown Medical Clinic',
+            address: '130-8780 Blundell Rd, Richmond, BC, V7A 4H2',
+            phone: '604-629-8968',
+            fax: '604-632-4999',
+            hours: 'Mon-Fri 9:00AM-5:00PM'
+        };
 
-    const confidentialityNotice = `This E-mail message and any attachments are CONFIDENTIAL and intended solely for the addressees. 
+        const confidentialityNotice = `This E-mail message and any attachments are CONFIDENTIAL and intended solely for the addressees. 
       If you are not an intended recipient, or you receive this message in error, we would be grateful that you deleted this message and informed us. 
       You are also hereby notified that this statement prohibits any unauthorized use, copying or dissemination with or without altering this E-mail, 
       in which case, a legal action in BC Canada is reserved for violation.`;
 
-    const attachmentsPath = path.join(process.cwd(), process.env.ATTACHMENTS_PATH);
+        const attachmentsPath = path.join(process.cwd(), process.env.ATTACHMENTS_PATH);
 
-    const templates = {
-      'Sun, Ken_36915': {
-        subject: 'Reminder! Your Spirometry Appointment',
-        html: `
+        const templates = {
+            'Sun, Ken_36915': {
+                subject: 'Reminder! Your Spirometry Appointment',
+                html: `
           <div style='font-family: Arial, sans-serif; color: #333;'>
             <p>Hi ${appointment.client_name},</p>
             <p>Thank you for choosing us for your healthcare needs. You are scheduled for a spirometry test with Dr. Sun Ken as follows:</p>
@@ -50,14 +50,14 @@ class TemplateService {
             <p><small>${confidentialityNotice}</small></p>
           </div>
         `,
-        attachments: [{
-          filename: 'Instruction-Spirometry.pdf',
-          path: path.join(attachmentsPath, 'Instruction-Spirometry.pdf')
-        }]
-      },
-      'Liu, Harry CHAOCHENG_J6097_49203': {
-        subject: 'Dermatologist Appointment: Please reply with \'CONFIRMED\'',
-        html: `
+                attachments: [{
+                    filename: 'Instruction-Spirometry.pdf',
+                    path: path.join(attachmentsPath, 'Instruction-Spirometry.pdf')
+                }]
+            },
+            'Liu, Harry CHAOCHENG_J6097_49203': {
+                subject: 'Dermatologist Appointment: Please reply with \'CONFIRMED\'',
+                html: `
           <div style='font-family: Arial, sans-serif; color: #333;'>
             <p>Hi ${appointment.client_name},</p>
             <p>Thank you for letting us be involved in your dermatology care.</p>
@@ -84,10 +84,10 @@ class TemplateService {
             <p><small>${confidentialityNotice}</small></p>
           </div>
         `
-      },
-      'Gao, YanXiang_59539': {
-        subject: 'MMC Dr. Gao Appointment: Please reply with \'CONFIRMED\'',
-        html: `
+            },
+            'Gao, YanXiang_59539': {
+                subject: 'MMC Dr. Gao Appointment: Please reply with \'CONFIRMED\'',
+                html: `
           <div style='font-family: Arial, sans-serif; color: #333;'>
             <p>Hi ${appointment.client_name},</p>
             <p>Thank you for letting us be involved in your Gynecological care.</p>
@@ -113,10 +113,10 @@ class TemplateService {
             <p><small>${confidentialityNotice}</small></p>
           </div>
         `
-      },
-      'default': {
-        subject: 'Appointment Reminder',
-        html: `
+            },
+            'default': {
+                subject: 'Appointment Reminder',
+                html: `
           <div style='font-family: Arial, sans-serif; color: #333;'>
             <p>Hi ${appointment.client_name},</p>
             <p>This is a reminder of your upcoming appointment:</p>
@@ -129,11 +129,11 @@ class TemplateService {
             <p>Warm regards,<br/>Midtown Medical Clinic Specialist Team</p>
           </div>
         `
-      }
-    };
+            }
+        };
 
-    return templates[appointment.provider_name] || templates.default;
-  }
+        return templates[appointment.provider_name] || templates.default;
+    }
 }
 
 module.exports = TemplateService;

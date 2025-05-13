@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    ports:
+      - "3001:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+    environment:
+      - TZ=America/Vancouver
+    container_name: clockingapp_client
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "13000:13000"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=13000
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASSWORD=Z2Rh6VGr7DE=
+      - DB_NAME=clockingapp
+      - DB_PORT=3306
+      - JWT_SECRET=J8KwPz5X2FbArE7VcN9QmT6LsDh3YuG4
+      - SMTP_HOST=smtp.gmail.com
+      - SMTP_PORT=587
+      - SMTP_USER=specialist@mmcwellness.ca
+      - SMTP_PASSWORD=gucz jkeu ysxk lqwg
+      - SMTP_FROM=specialist@mmcwellness.ca
+      - SMTP_CC=info@mmcwellness.ca
+      - REMINDER_DAYS_BEFORE=1
+      - REMINDER_HOUR=17
+      - ATTACHMENTS_PATH=src/attachments/email
+      - DEBUG=false
+      - CORS_ORIGIN=http://clock.mmcwellness.ca
+      - TZ=America/Vancouver
+    depends_on:
+      db:
+        condition: service_healthy
+    container_name: clockingapp_server
+
+  db:
+    image: mysql:8.0
+    ports:
+      - "13306:3306"  # 使用不同的端口，避免与Oscar EMR的数据库冲突
+    environment:
+      - MYSQL_ROOT_PASSWORD=Z2Rh6VGr7DE=
+      - MYSQL_DATABASE=clockingapp
+      - TZ=America/Vancouver
+    volumes:
+      - clockingapp-mysql-data:/var/lib/mysql  # 使用独立的卷名称
+      - ./mysql-init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password --default-time-zone='-07:00'
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pZ2Rh6VGr7DE=" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    container_name: clockingapp_db
+
+volumes:
+  clockingapp-mysql-data:  # 使用独立的卷名称
+    name: clockingapp-mysql-data  # 显式命名卷，避免冲突

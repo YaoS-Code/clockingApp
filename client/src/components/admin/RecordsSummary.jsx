@@ -33,13 +33,16 @@ import {
   Snackbar,
   Alert
 } from '@mui/material';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
 import SaveIcon from '@mui/icons-material/Save';
 import CancelIcon from '@mui/icons-material/Cancel';
-import { format, addDays, endOfMonth, isValid, parse } from 'date-fns';
+import { format, addDays, endOfMonth, isValid, parse, parseISO } from 'date-fns';
 import api from '../../services/api';
-import { getInitialDateRange } from '../../utils/dateUtils';
+import { getInitialDateRange, toVancouverTime, formatVancouverDate } from '../../utils/dateUtils';
 
 function RecordsSummary() {
   const [summaryData, setSummaryData] = useState([]);
@@ -79,25 +82,50 @@ function RecordsSummary() {
       setLoading(true);
       setError('');
 
-      // Adjust end date to include the entire day (23:59:59)
-      const endDate = new Date(filters.end_date);
-      endDate.setHours(23, 59, 59, 999);
-      const adjustedEndDate = format(endDate, 'yyyy-MM-dd HH:mm:ss');
+      // 打印过滤器，便于调试
+      console.log('Fetching with filters:', filters);
+
+      // Use the selected dates directly without timezone conversion
+      if (!filters.start_date || !filters.end_date) {
+        throw new Error('Start date and end date are required');
+      }
+
+      // Ensure end date includes the full day (23:59:59)
+      const formattedStartDate = `${filters.start_date} 00:00:00`;
+      const formattedEndDate = `${filters.end_date} 23:59:59`;
+
+      console.log('Formatted dates:', { start: formattedStartDate, end: formattedEndDate });
 
       const params = {
-        start_date: filters.start_date,
-        end_date: adjustedEndDate,
+        start_date: formattedStartDate,
+        end_date: formattedEndDate,
         ...(filters.location !== 'all' && { location: filters.location })
       };
 
+      console.log('Sending API request with params:', params);
+
       const response = await api.get('/admin/records/summary', { params });
+      console.log('API response:', response.data);
+
+      if (!response.data || !Array.isArray(response.data) || response.data.length === 0) {
+        console.warn('Empty or invalid response data:', response.data);
+        setSummaryData([]);
+        setLoading(false);
+        return;
+      }
 
       const groupedData = response.data.reduce((users, record) => {
+        // 验证记录字段
+        if (!record || !record.user_id) {
+          console.warn('Invalid record found:', record);
+          return users;
+        }
+
         if (!users[record.user_id]) {
           users[record.user_id] = {
             user_id: record.user_id,
-            username: record.username,
-            full_name: record.full_name,
+            username: record.username || 'Unknown',
+            full_name: record.full_name || 'Unknown User',
             total_hours: 0,
             total_records: 0,
             locations: {},
@@ -114,28 +142,41 @@ function RecordsSummary() {
           };
         }
 
+        // 计算工作时间
+        let individualHours = 0;
+        try {
+          individualHours = parseFloat(record.individual_hours || 0);
+          if (isNaN(individualHours)) {
+            individualHours = 0;
+          }
+        } catch (e) {
+          console.error('Error parsing individual hours:', e, record);
+          individualHours = 0;
+        }
+
         users[record.user_id].locations[location].records.push({
           id: record.record_id,
           clock_in: record.clock_in,
           clock_out: record.clock_out,
           break_minutes: record.break_minutes || 30,
-          individual_hours: parseFloat(record.individual_hours || 0),
+          individual_hours: individualHours,
           location: location
         });
 
-        users[record.user_id].locations[location].total_hours +=
-          parseFloat(record.individual_hours || 0);
-
-        users[record.user_id].total_hours += parseFloat(record.individual_hours || 0);
+        users[record.user_id].locations[location].total_hours += individualHours;
+        users[record.user_id].total_hours += individualHours;
         users[record.user_id].total_records += 1;
 
         return users;
       }, {});
 
-      setSummaryData(Object.values(groupedData));
+      const summaryArray = Object.values(groupedData);
+      console.log('Processed data:', summaryArray);
+
+      setSummaryData(summaryArray);
     } catch (error) {
       console.error('Failed to fetch summary:', error);
-      setError(error.response?.data?.message || 'Failed to fetch summary data');
+      setError(error.response?.data?.message || error.message || 'Failed to fetch summary data');
     } finally {
       setLoading(false);
     }
@@ -157,6 +198,7 @@ function RecordsSummary() {
       return;
     }
 
+    // 格式化日期时间为HTML datetime-local输入所需的格式
     const formattedClockIn = clockRecord.clock_in ?
       moment(clockRecord.clock_in).format('YYYY-MM-DDTHH:mm') : '';
     const formattedClockOut = clockRecord.clock_out ?
@@ -174,9 +216,13 @@ function RecordsSummary() {
 
   const handleSaveEdit = async () => {
     try {
+      // 确保日期时间格式正确
+      const formattedClockIn = moment(editingRecord.clock_in).format('YYYY-MM-DD HH:mm:ss');
+      const formattedClockOut = moment(editingRecord.clock_out).format('YYYY-MM-DD HH:mm:ss');
+
       await api.put(`/admin/records/${editingRecord.id}`, {
-        clock_in: editingRecord.clock_in,
-        clock_out: editingRecord.clock_out,
+        clock_in: formattedClockIn,
+        clock_out: formattedClockOut,
         location: editingRecord.location,
         break_minutes: editingRecord.break_minutes,
         notes: 'Modified by admin'
@@ -222,84 +268,68 @@ function RecordsSummary() {
   };
 
   const handleEditDateTimeChange = (field, value) => {
-    // 允许空值
     if (!value) {
       setEditingRecord(prev => ({
         ...prev,
-        [field]: ''
+        [field]: null
       }));
       return;
     }
 
-    // 尝试解析日期时间
-    const parsedDate = moment(value, 'YYYY-MM-DD HH:mm');
+    try {
+      // Format the date directly without timezone conversion
+      const formattedDate = format(new Date(value), "yyyy-MM-dd'T'HH:mm");
 
-    // 如果是有效日期时间，更新状态
-    if (parsedDate.isValid()) {
       setEditingRecord(prev => ({
         ...prev,
-        [field]: parsedDate.format('YYYY-MM-DDTHH:mm')
+        [field]: formattedDate
       }));
+    } catch (error) {
+      console.error(`Error formatting ${field} date:`, error);
     }
   };
 
   const EditRecordDialog = () => (
-    <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)}>
+    <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
       <DialogTitle>Edit Clock Record</DialogTitle>
       <DialogContent>
-        <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={12}>
-            <TextField
+        <LocalizationProvider dateAdapter={AdapterDateFns}>
+          <Box sx={{ mt: 2 }}>
+            <DateTimePicker
               label="Clock In"
-              type="text"
-              value={editingRecord?.clock_in?.slice(0, 16).replace('T', ' ') || ''}
-              onChange={(e) => setEditingRecord({
-                ...editingRecord,
-                clock_in: e.target.value.replace(' ', 'T')
-              })}
-              onBlur={(e) => handleEditDateTimeChange('clock_in', e.target.value)}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              placeholder="YYYY-MM-DD HH:mm"
-              inputProps={{
-                maxLength: 16
+              value={editingRecord?.clock_in ? new Date(editingRecord.clock_in) : null}
+              onChange={(newValue) => handleEditDateTimeChange('clock_in', newValue)}
+              slotProps={{
+                textField: {
+                  fullWidth: true,
+                  margin: "normal"
+                }
               }}
             />
-          </Grid>
-          <Grid item xs={12}>
-            <TextField
+            <DateTimePicker
               label="Clock Out"
-              type="text"
-              value={editingRecord?.clock_out?.slice(0, 16).replace('T', ' ') || ''}
-              onChange={(e) => setEditingRecord({
-                ...editingRecord,
-                clock_out: e.target.value.replace(' ', 'T')
-              })}
-              onBlur={(e) => handleEditDateTimeChange('clock_out', e.target.value)}
-              fullWidth
-              InputLabelProps={{ shrink: true }}
-              placeholder="YYYY-MM-DD HH:mm"
-              inputProps={{
-                maxLength: 16
+              value={editingRecord?.clock_out ? new Date(editingRecord.clock_out) : null}
+              onChange={(newValue) => handleEditDateTimeChange('clock_out', newValue)}
+              slotProps={{
+                textField: {
+                  fullWidth: true,
+                  margin: "normal"
+                }
               }}
             />
-          </Grid>
-          <Grid item xs={12}>
             <TextField
               label="Break Minutes"
               type="number"
               value={editingRecord?.break_minutes || 30}
               onChange={(e) => setEditingRecord({
                 ...editingRecord,
-                break_minutes: Math.max(0, parseInt(e.target.value) || 0)
+                break_minutes: parseInt(e.target.value) || 30
               })}
               fullWidth
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ min: 0 }}
+              margin="normal"
+              InputProps={{ inputProps: { min: 0, max: 120 } }}
             />
-          </Grid>
-          <Grid item xs={12}>
-            <FormControl fullWidth>
+            <FormControl fullWidth margin="normal">
               <InputLabel>Location</InputLabel>
               <Select
                 value={editingRecord?.location || ''}
@@ -309,25 +339,31 @@ function RecordsSummary() {
                 })}
                 label="Location"
               >
-                {locations
-                  .filter(loc => loc.value !== 'all')
-                  .map((loc) => (
-                    <MenuItem key={loc.value} value={loc.value}>
-                      {loc.label}
-                    </MenuItem>
-                  ))
-                }
+                {locations.filter(loc => loc.value !== 'all').map((loc) => (
+                  <MenuItem key={loc.value} value={loc.value}>
+                    {loc.label}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
-          </Grid>
-        </Grid>
+          </Box>
+        </LocalizationProvider>
       </DialogContent>
       <DialogActions>
-        <Button onClick={() => setEditDialogOpen(false)} startIcon={<CancelIcon />}>
-          Cancel
+        <Button
+          onClick={() => setEditDialogOpen(false)}
+          startIcon={<CancelIcon />}
+          color="inherit"
+        >
+          CANCEL
         </Button>
-        <Button onClick={handleSaveEdit} color="primary" startIcon={<SaveIcon />}>
-          Save
+        <Button
+          onClick={handleSaveEdit}
+          startIcon={<SaveIcon />}
+          color="primary"
+          variant="contained"
+        >
+          SAVE
         </Button>
       </DialogActions>
     </Dialog>
@@ -339,8 +375,26 @@ function RecordsSummary() {
   };
 
   const formatDateTime = (datetime) => {
-    if (!datetime) return 'Invalid Date';
-    return moment(datetime).format('YYYY-MM-DD HH:mm:ss');
+    if (!datetime) return 'N/A';
+    try {
+      const date = new Date(datetime);
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date in RecordsSummary:', datetime);
+        return 'Invalid Date';
+      }
+
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    } catch (error) {
+      console.error('Error formatting date in RecordsSummary:', error, datetime);
+      return 'Invalid Date';
+    }
   };
 
   if (loading) {
@@ -352,80 +406,79 @@ function RecordsSummary() {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Paper sx={{ p: 2, display: 'flex', flexDirection: 'column' }}>
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="h6" gutterBottom component="div">
-            Staff Working Hours Summary
-          </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={4}>
-              <FormControl fullWidth>
-                <InputLabel>Location</InputLabel>
-                <Select
-                  value={filters.location}
-                  onChange={(e) => setFilters({ ...filters, location: e.target.value })}
-                  label="Location"
-                >
-                  {locations.map((loc) => (
-                    <MenuItem key={loc.value} value={loc.value}>
-                      {loc.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                label="Start Date"
-                type="text"
-                value={filters.start_date}
-                onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-                onBlur={(e) => handleDateChange('start_date', e.target.value)}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                placeholder="YYYY-MM-DD"
-                inputProps={{
-                  maxLength: 10
-                }}
-              />
-            </Grid>
-            <Grid item xs={12} md={4}>
-              <TextField
-                label="End Date"
-                type="text"
-                value={filters.end_date}
-                onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-                onBlur={(e) => handleDateChange('end_date', e.target.value)}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                placeholder="YYYY-MM-DD"
-                inputProps={{
-                  maxLength: 10
-                }}
-              />
-            </Grid>
+    <Container maxWidth="lg">
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Typography variant="h5" gutterBottom>
+          Staff Working Hours Summary
+        </Typography>
+        <Grid container spacing={2} sx={{ mb: 2 }}>
+          <Grid item xs={12} sm={4}>
+            <FormControl fullWidth>
+              <InputLabel>Location</InputLabel>
+              <Select
+                value={filters.location}
+                onChange={(e) => setFilters({ ...filters, location: e.target.value })}
+                label="Location"
+              >
+                {locations.map((loc) => (
+                  <MenuItem key={loc.value} value={loc.value}>
+                    {loc.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Grid>
-        </Box>
-
+          <Grid item xs={12} sm={4}>
+            <TextField
+              label="Start Date"
+              type="date"
+              value={filters.start_date ? filters.start_date : ''}
+              onChange={(e) => {
+                const date = e.target.value;
+                setFilters(prev => ({
+                  ...prev,
+                  start_date: date
+                }));
+              }}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <TextField
+              label="End Date"
+              type="date"
+              value={filters.end_date ? filters.end_date : ''}
+              onChange={(e) => {
+                const date = e.target.value;
+                setFilters(prev => ({
+                  ...prev,
+                  end_date: date
+                }));
+              }}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+        </Grid>
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <CircularProgress />
           </Box>
         ) : error ? (
           <Alert severity="error">{error}</Alert>
+        ) : summaryData.length === 0 ? (
+          <Alert severity="info">No records found for the selected period</Alert>
         ) : (
           <>
             <Box sx={{ mb: 2 }}>
               <Chip
                 label={`Grand Total Hours: ${formatDuration(
-                  summaryData.reduce((total, user) => total + parseFloat(user.total_hours), 0)
+                  summaryData.reduce((total, user) => total + user.total_hours, 0)
                 )}`}
                 color="primary"
-                sx={{ fontSize: '1rem', py: 2 }}
               />
             </Box>
-
             {summaryData.map((user) => (
               <Accordion key={user.user_id}>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -471,9 +524,9 @@ function RecordsSummary() {
                           <TableBody>
                             {locationData.records.map((record) => (
                               <TableRow key={record.id}>
-                                <TableCell>{moment(record.clock_in).format('YYYY-MM-DD HH:mm:ss')}</TableCell>
+                                <TableCell>{formatDateTime(record.clock_in)}</TableCell>
                                 <TableCell>
-                                  {record.clock_out ? moment(record.clock_out).format('YYYY-MM-DD HH:mm:ss') : 'Still clocked in'}
+                                  {record.clock_out ? formatDateTime(record.clock_out) : 'Still clocked in'}
                                 </TableCell>
                                 <TableCell>{record.break_minutes} min</TableCell>
                                 <TableCell>{Number(record.individual_hours).toFixed(2)}</TableCell>
@@ -558,12 +611,6 @@ function RecordsSummary() {
                 </AccordionDetails>
               </Accordion>
             ))}
-
-            {summaryData.length === 0 && (
-              <Typography variant="body1" sx={{ textAlign: 'center', mt: 3 }}>
-                No records found for the selected period
-              </Typography>
-            )}
           </>
         )}
       </Paper>

@@ -1,10 +1,21 @@
 import { createSlice } from '@reduxjs/toolkit';
 
+// 安全地解析localStorage中的JSON
+const safelyParseJSON = (json) => {
+  if (!json) return null;
+  try {
+    return JSON.parse(json);
+  } catch (e) {
+    console.error('Failed to parse JSON:', e);
+    return null;
+  }
+};
+
 const storedUser = localStorage.getItem('user');
 const storedToken = localStorage.getItem('token');
 
 const initialState = {
-  user: storedUser ? JSON.parse(storedUser) : null,
+  user: safelyParseJSON(storedUser),
   token: storedToken || null,
   isAuthenticated: !!storedToken,
 };

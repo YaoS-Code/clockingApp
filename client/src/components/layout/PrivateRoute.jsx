@@ -41,7 +41,7 @@ function PrivateRoute({ children, adminOnly = false }) {
     return <Navigate to="/login" />;
   }
 
-  if (adminOnly && user?.role !== 'admin') {
+  if (adminOnly && user?.role !== 'admin' && user?.username !== 'manager') {
     return <Navigate to="/" />;
   }
 

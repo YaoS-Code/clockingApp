@@ -12,9 +12,39 @@ exports.getRecordsSummaryByPeriod = async (req, res) => {
             });
         }
 
+        // Parse and validate date inputs
+        let formattedStartDate, formattedEndDate;
+
+        try {
+            // Handle dates in YYYY-MM-DD format by adding time component
+            if (start_date.length === 10) {
+                formattedStartDate = `${start_date} 00:00:00`;
+            } else {
+                formattedStartDate = start_date;
+            }
+
+            if (end_date.length === 10) {
+                formattedEndDate = `${end_date} 23:59:59`;
+            } else {
+                formattedEndDate = end_date;
+            }
+
+            // Verify dates are valid
+            if (!moment(formattedStartDate).isValid() || !moment(formattedEndDate).isValid()) {
+                return res.status(400).json({
+                    error: 'Invalid date format. Please use YYYY-MM-DD format.'
+                });
+            }
+        } catch (error) {
+            console.error('Date parsing error:', error, { start_date, end_date });
+            return res.status(400).json({
+                error: 'Invalid date format. Please use YYYY-MM-DD format.'
+            });
+        }
+
         const query = `
         WITH user_location_summary AS (
-            SELECT 
+            SELECT
                 u.id as user_id,
                 u.username,
                 u.full_name,
@@ -24,15 +54,15 @@ exports.getRecordsSummaryByPeriod = async (req, res) => {
                 COUNT(cr.id) OVER (PARTITION BY u.id) as total_records,
                 COUNT(cr.id) OVER (PARTITION BY u.id, cr.location) as location_records,
                 SUM(
-                    CASE 
-                        WHEN cr.clock_out IS NOT NULL 
+                    CASE
+                        WHEN cr.clock_out IS NOT NULL
                         THEN (TIMESTAMPDIFF(SECOND, cr.clock_in, cr.clock_out) - (cr.break_minutes * 60))
                         ELSE (TIMESTAMPDIFF(SECOND, cr.clock_in, NOW()) - (cr.break_minutes * 60))
                     END
                 ) OVER (PARTITION BY u.id) / 3600 as total_hours,
                 SUM(
-                    CASE 
-                        WHEN cr.clock_out IS NOT NULL 
+                    CASE
+                        WHEN cr.clock_out IS NOT NULL
                         THEN (TIMESTAMPDIFF(SECOND, cr.clock_in, cr.clock_out) - (cr.break_minutes * 60))
                         ELSE (TIMESTAMPDIFF(SECOND, cr.clock_in, NOW()) - (cr.break_minutes * 60))
                     END
@@ -43,21 +73,21 @@ exports.getRecordsSummaryByPeriod = async (req, res) => {
                 MAX(cr.clock_out) OVER (PARTITION BY u.id, cr.location) as location_last_clock_out,
                 cr.clock_in,
                 cr.clock_out,
-                CASE 
-                    WHEN cr.clock_out IS NOT NULL 
+                CASE
+                    WHEN cr.clock_out IS NOT NULL
                     THEN (TIMESTAMPDIFF(SECOND, cr.clock_in, cr.clock_out) - (cr.break_minutes * 60))
                     ELSE (TIMESTAMPDIFF(SECOND, cr.clock_in, NOW()) - (cr.break_minutes * 60))
                 END / 3600 as individual_hours
             FROM users u
             LEFT JOIN clock_records cr ON u.id = cr.user_id
-            WHERE cr.clock_in >= ? 
+            WHERE cr.clock_in >= ?
             AND DATE(cr.clock_in) <= DATE(?)
         )
         SELECT * FROM user_location_summary
         ORDER BY user_id, clock_in DESC
         `;
 
-        const [summary] = await db.query(query, [start_date, end_date]);
+        const [summary] = await db.query(query, [formattedStartDate, formattedEndDate]);
 
         // Format the results
         const formattedSummary = summary.map(record => ({
@@ -102,14 +132,14 @@ exports.getUserRecords = async (req, res) => {
         }
 
         let query = `
-            SELECT 
+            SELECT
                 cr.id,
                 cr.clock_in,
                 cr.clock_out,
                 cr.status,
                 cr.notes,
-                CASE 
-                    WHEN cr.clock_out IS NOT NULL 
+                CASE
+                    WHEN cr.clock_out IS NOT NULL
                     THEN TIMESTAMPDIFF(SECOND, cr.clock_in, cr.clock_out) / 3600
                     ELSE TIMESTAMPDIFF(SECOND, cr.clock_in, NOW()) / 3600
                 END as hours_worked,
@@ -117,7 +147,7 @@ exports.getUserRecords = async (req, res) => {
                 cr.ip_address,
                 cr.created_at,
                 cr.updated_at,
-                CASE 
+                CASE
                     WHEN cr.modified_by IS NOT NULL THEN JSON_OBJECT(
                         'modifier', m.username,
                         'modified_at', cr.updated_at
@@ -224,7 +254,7 @@ exports.modifyRecord = async (req, res) => {
         // Prepare modification note
         const modificationNote = `
             Modified by admin (${req.user.username}) on ${moment().format('YYYY-MM-DD HH:mm:ss')}
-            Previous: In: ${moment(existingRecord[0].clock_in).format('YYYY-MM-DD HH:mm:ss')} 
+            Previous: In: ${moment(existingRecord[0].clock_in).format('YYYY-MM-DD HH:mm:ss')}
             ${existingRecord[0].clock_out ? 'Out: ' + moment(existingRecord[0].clock_out).format('YYYY-MM-DD HH:mm:ss') : ''}
             Break: ${existingRecord[0].break_minutes} minutes
             ${existingRecord[0].notes ? '\nOriginal Notes: ' + existingRecord[0].notes : ''}
@@ -233,7 +263,7 @@ exports.modifyRecord = async (req, res) => {
 
         // Update record
         const updateQuery = `
-            UPDATE clock_records 
+            UPDATE clock_records
             SET clock_in = ?,
                 clock_out = ?,
                 notes = ?,
@@ -259,7 +289,7 @@ exports.modifyRecord = async (req, res) => {
         // Log the modification
         await db.query(
             `INSERT INTO audit_logs (
-                user_id, action, table_name, record_id, 
+                user_id, action, table_name, record_id,
                 old_values, new_values, ip_address
             ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [
@@ -299,7 +329,7 @@ exports.modifyRecord = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
     try {
         const [users] = await db.query(
-            `SELECT 
+            `SELECT
                 id,
                 username,
                 email,
@@ -308,10 +338,10 @@ exports.getAllUsers = async (req, res) => {
                 status,
                 created_at,
                 last_login,
-                (SELECT COUNT(*) 
-                 FROM clock_records 
-                 WHERE user_id = users.id AND 
-                       status = 'in' AND 
+                (SELECT COUNT(*)
+                 FROM clock_records
+                 WHERE user_id = users.id AND
+                       status = 'in' AND
                        clock_out IS NULL
                 ) as is_clocked_in
             FROM users
@@ -357,6 +387,188 @@ exports.updateUserStatus = async (req, res) => {
         });
     } catch (error) {
         console.error('Update user status error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Get all correction requests
+exports.getCorrectionRequests = async (req, res) => {
+    try {
+        const query = `
+            SELECT
+                cr.*,
+                u.username,
+                u.full_name,
+                r.id as record_id,
+                r.clock_in as original_clock_in,
+                r.clock_out as original_clock_out,
+                r.break_minutes as original_break_minutes,
+                r.location as original_location
+            FROM correction_requests cr
+            JOIN users u ON cr.user_id = u.id
+            JOIN clock_records r ON cr.record_id = r.id
+            ORDER BY cr.created_at DESC
+        `;
+
+        const [requests] = await db.query(query);
+
+        // Group requests by status
+        const groupedRequests = {
+            pending: requests.filter(req => req.status === 'pending'),
+            approved: requests.filter(req => req.status === 'approved'),
+            rejected: requests.filter(req => req.status === 'rejected')
+        };
+
+        // Format dates
+        Object.keys(groupedRequests).forEach(status => {
+            groupedRequests[status] = groupedRequests[status].map(request => ({
+                ...request,
+                created_at: moment(request.created_at).format('YYYY-MM-DD HH:mm:ss'),
+                updated_at: request.updated_at ? moment(request.updated_at).format('YYYY-MM-DD HH:mm:ss') : null,
+                original_clock_in: moment(request.original_clock_in).format('YYYY-MM-DD HH:mm:ss'),
+                original_clock_out: request.original_clock_out ? moment(request.original_clock_out).format('YYYY-MM-DD HH:mm:ss') : null,
+                requested_clock_in: moment(request.requested_clock_in).format('YYYY-MM-DD HH:mm:ss'),
+                requested_clock_out: request.requested_clock_out ? moment(request.requested_clock_out).format('YYYY-MM-DD HH:mm:ss') : null,
+                user: {
+                    id: request.user_id,
+                    username: request.username,
+                    full_name: request.full_name
+                },
+                record: {
+                    id: request.record_id,
+                    break_minutes: request.original_break_minutes,
+                    location: request.original_location
+                }
+            }));
+        });
+
+        res.json(groupedRequests);
+    } catch (error) {
+        console.error('Get correction requests error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Get count of pending correction requests
+exports.getCorrectionRequestsCount = async (req, res) => {
+    try {
+        const [result] = await db.query(
+            'SELECT COUNT(*) as count FROM correction_requests WHERE status = ?',
+            ['pending']
+        );
+
+        res.json({ count: result[0].count });
+    } catch (error) {
+        console.error('Get correction requests count error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Approve a correction request
+exports.approveCorrectionRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { admin_notes } = req.body || {};
+
+        // Begin transaction
+        await db.query('START TRANSACTION');
+
+        // Get the correction request
+        const [request] = await db.query(
+            'SELECT * FROM correction_requests WHERE id = ?',
+            [id]
+        );
+
+        if (request.length === 0) {
+            await db.query('ROLLBACK');
+            return res.status(404).json({ error: 'Correction request not found' });
+        }
+
+        if (request[0].status !== 'pending') {
+            await db.query('ROLLBACK');
+            return res.status(400).json({ error: 'This request has already been processed' });
+        }
+
+        // Update the clock record
+        await db.query(
+            `UPDATE clock_records
+             SET clock_in = ?,
+                 clock_out = ?,
+                 break_minutes = ?,
+                 location = ?,
+                 modified_by = ?,
+                 updated_at = NOW(),
+                 notes = CONCAT(IFNULL(notes, ''), '\nModified by admin based on correction request #', ?)
+             WHERE id = ?`,
+            [
+                request[0].requested_clock_in,
+                request[0].requested_clock_out,
+                request[0].requested_break_minutes,
+                request[0].requested_location,
+                req.user.id,
+                id,
+                request[0].record_id
+            ]
+        );
+
+        // Update the correction request status
+        await db.query(
+            `UPDATE correction_requests
+             SET status = 'approved',
+                 admin_notes = ?,
+                 updated_at = NOW()
+             WHERE id = ?`,
+            [admin_notes || null, id]
+        );
+
+        // Commit transaction
+        await db.query('COMMIT');
+
+        res.json({
+            message: 'Correction request approved successfully'
+        });
+    } catch (error) {
+        await db.query('ROLLBACK');
+        console.error('Approve correction request error:', error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Reject a correction request
+exports.rejectCorrectionRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { admin_notes } = req.body || {};
+
+        // Get the correction request
+        const [request] = await db.query(
+            'SELECT * FROM correction_requests WHERE id = ?',
+            [id]
+        );
+
+        if (request.length === 0) {
+            return res.status(404).json({ error: 'Correction request not found' });
+        }
+
+        if (request[0].status !== 'pending') {
+            return res.status(400).json({ error: 'This request has already been processed' });
+        }
+
+        // Update the correction request status
+        await db.query(
+            `UPDATE correction_requests
+             SET status = 'rejected',
+                 admin_notes = ?,
+                 updated_at = NOW()
+             WHERE id = ?`,
+            [admin_notes || null, id]
+        );
+
+        res.json({
+            message: 'Correction request rejected successfully'
+        });
+    } catch (error) {
+        console.error('Reject correction request error:', error);
         res.status(500).json({ error: error.message });
     }
 };

@@ -7,15 +7,43 @@ const SchedulerService = require('./services/schedulerService');
 const authRoutes = require('./routes/authRoutes');
 const clockRoutes = require('./routes/clockRoutes');
 const adminRoutes = require('./routes/adminRoutes');
-const reminderRoutes = require('./routes/reminderRoutes'); // Add this line
+const reminderRoutes = require('./routes/reminderRoutes');
 
 const app = express();
+
+// Define allowed origins
+const allowedOrigins = [
+    'http://216.232.48.211:3001',
+    'http://localhost:3001',
+    'http://localhost:3000',
+    'https://clock.mmcwellness.ca',
+    'http://client',  // Docker client service
+    'http://client:80'  // Docker client service with port
+];
 
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: ['http://216.232.48.211:3001', 'http://localhost:3001', 'http://localhost:3000', 'https://clock.mmcwellness.ca'],
-  credentials: true
+    origin: function (origin, callback) {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.indexOf(origin) === -1) {
+            console.log('CORS blocked origin:', origin);
+        }
+
+        // Allow all origins in development
+        if (process.env.NODE_ENV === 'development') {
+            return callback(null, true);
+        }
+
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            return callback(null, true);
+        }
+
+        return callback(null, false);
+    },
+    credentials: true
 }));
 app.use(express.json()); // Make sure this is here
 app.use(express.urlencoded({ extended: true }));

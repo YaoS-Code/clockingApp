@@ -2,8 +2,19 @@ import axios from 'axios';
 import store from '../store/store';
 import { logout } from '../store/authSlice';
 
+// Determine API base URL based on current environment
+let baseURL;
+if (window.location.hostname === 'localhost') {
+  baseURL = 'http://localhost:3001/api';
+} else if (window.location.hostname === 'clock.mmcwellness.ca') {
+  baseURL = 'https://clock.mmcwellness.ca/api';
+} else {
+  // Docker environment or other environments
+  baseURL = '/api';
+}
+
 const api = axios.create({
-  baseURL: 'https://clock-backend.mmcwellness.ca/api',
+  baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -27,6 +38,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    console.error('API Error:', error);
     if (error.response?.status === 401) {
       // Dispatch logout action to clear Redux state
       store.dispatch(logout());

@@ -6,7 +6,11 @@ const {
     getRecordsSummaryByPeriod,
     getUserRecords,
     modifyRecord,
-    getAllUsers
+    getAllUsers,
+    getCorrectionRequests,
+    getCorrectionRequestsCount,
+    approveCorrectionRequest,
+    rejectCorrectionRequest
 } = require('../controllers/adminController');
 
 // All routes require authentication and admin privileges
@@ -24,5 +28,11 @@ router.get('/users/:user_id/records', getUserRecords);
 
 // Modify record
 router.put('/records/:id', modifyRecord);
+
+// Correction requests routes
+router.get('/correction-requests', getCorrectionRequests);
+router.get('/correction-requests/count', getCorrectionRequestsCount);
+router.put('/correction-requests/:id/approve', approveCorrectionRequest);
+router.put('/correction-requests/:id/reject', rejectCorrectionRequest);
 
 module.exports = router;

@@ -2,6 +2,11 @@
 node_modules/
 /.pnp
 .pnp.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
 
 # Testing
 /coverage
@@ -9,18 +14,21 @@ node_modules/
 # Production
 /build
 /dist
+client/build/
+client/dist/
+server/dist/
 
-# Misc
-.DS_Store
+# Environment variables
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+server/.env
+server/src/.env
 
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Misc
+.DS_Store
 
 # IDE
 .idea/
@@ -30,3 +38,30 @@ yarn-error.log*
 
 # Docker
 docker-compose.override.yml
+*-data/
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Backup files
+*.bak
+bak/
+*_backup*.sql
+manager_login.json
+
+# Database files
+*.sql
+*.sqlite
+*.db
+
+# Except for database initialization scripts
+!mysql-init/*.sql
+
+# Debug files
+.cursor/

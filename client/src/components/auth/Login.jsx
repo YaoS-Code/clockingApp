@@ -26,8 +26,16 @@ function Login() {
     try {
       const response = await api.post('/auth/login', formData);
       dispatch(setCredentials(response.data));
-      navigate('/');
+
+      // 根据用户角色决定跳转位置
+      const user = response.data.user;
+      if (user.role === 'admin' || user.username === 'manager') {
+        navigate('/admin/summary');
+      } else {
+        navigate('/');
+      }
     } catch (err) {
+      console.error('Login error:', err);
       setError(err.response?.data?.error || 'Login failed');
     }
   };
@@ -69,7 +77,7 @@ function Login() {
             variant="contained"
             sx={{ mt: 3, mb: 2 }}
           >
-            Login
+            LOGIN
           </Button>
         </Box>
       </Paper>
